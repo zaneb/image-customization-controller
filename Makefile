@@ -5,7 +5,7 @@ GOLANGCI_LINT_CACHE=${HOME}/.cache/golangci-lint
 endif
 GOLANGCI_LINT ?= GOLANGCI_LINT_CACHE=$(GOLANGCI_LINT_CACHE) go run github.com/golangci/golangci-lint/cmd/golangci-lint
 
-IMG ?= controller:latest
+IMG ?= image-customization-controller:latest
 
 # Set VERBOSE to -v to make tests produce more output
 VERBOSE ?= ""
@@ -31,3 +31,11 @@ lint:
 generate:
 	# go generate -x ./...
 	$(GOLANGCI_LINT) run --fix
+
+.PHONY: docker
+docker: generate
+	docker build . -t ${IMG}
+
+.PHONY: docker-push
+docker-push:
+	docker push ${IMG}
