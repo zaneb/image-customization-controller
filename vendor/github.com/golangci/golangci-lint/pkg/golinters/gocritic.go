@@ -33,9 +33,7 @@ func NewGocritic() *goanalysis.Linter {
 	}
 	return goanalysis.NewLinter(
 		gocriticName,
-		`Provides many diagnostics that check for bugs, performance and style issues.
-Extensible without recompilation through dynamic rules.
-Dynamic rules are written declaratively with AST patterns, filters, report message and optional suggestion.`,
+		"The most opinionated Go source code linter",
 		[]*analysis.Analyzer{analyzer},
 		nil,
 	).WithContextSetter(func(lintCtx *linter.Context) {
@@ -124,10 +122,7 @@ func buildEnabledCheckers(lintCtx *linter.Context, linterCtx *gocriticlinter.Con
 			return nil, err
 		}
 
-		c, err := gocriticlinter.NewChecker(linterCtx, info)
-		if err != nil {
-			return nil, err
-		}
+		c := gocriticlinter.NewChecker(linterCtx, info)
 		enabledCheckers = append(enabledCheckers, c)
 	}
 

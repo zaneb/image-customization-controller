@@ -1,57 +1,46 @@
-/*
-Copyright (c) 2020 Denis Tingajkin
-
-SPDX-License-Identifier: Apache-2.0
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at:
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
 package goheader
 
-func NewReader(text string) *Reader {
-	return &Reader{source: text}
+type Reader interface {
+	Peek() rune
+	Next() rune
+	Done() bool
+	Finish() string
+	Position() int
+	Location() Location
+	SetPosition(int)
+	ReadWhile(func(rune) bool) string
 }
 
-type Reader struct {
+func NewReader(text string) Reader {
+	return &reader{source: text}
+}
+
+type reader struct {
 	source   string
 	position int
 	location Location
-	offset   Location
 }
 
-func (r *Reader) SetOffset(offset Location) {
-	r.offset = offset
-}
-
-func (r *Reader) Position() int {
+func (r *reader) Position() int {
 	return r.position
 }
 
-func (r *Reader) Location() Location {
-	return r.location.Add(r.offset)
+func (r *reader) Location() Location {
+	return r.location
 }
 
-func (r *Reader) Peek() rune {
+func (r *reader) Peek() rune {
 	if r.Done() {
 		return rune(0)
 	}
 	return rune(r.source[r.position])
 }
 
-func (r *Reader) Done() bool {
+func (r *reader) Done() bool {
 	return r.position >= len(r.source)
 }
 
-func (r *Reader) Next() rune {
+func (r *reader) Next() rune {
 	if r.Done() {
 		return rune(0)
 	}
@@ -66,7 +55,7 @@ func (r *Reader) Next() rune {
 	return reuslt
 }
 
-func (r *Reader) Finish() string {
+func (r *reader) Finish() string {
 	if r.position >= len(r.source) {
 		return ""
 	}
@@ -74,7 +63,7 @@ func (r *Reader) Finish() string {
 	return r.source[r.position:]
 }
 
-func (r *Reader) SetPosition(pos int) {
+func (r *reader) SetPosition(pos int) {
 	if pos < 0 {
 		r.position = 0
 	}
@@ -82,7 +71,7 @@ func (r *Reader) SetPosition(pos int) {
 	r.location = r.calculateLocation()
 }
 
-func (r *Reader) ReadWhile(match func(rune) bool) string {
+func (r *reader) ReadWhile(match func(rune) bool) string {
 	if match == nil {
 		return ""
 	}
@@ -93,12 +82,12 @@ func (r *Reader) ReadWhile(match func(rune) bool) string {
 	return r.source[start:r.position]
 }
 
-func (r *Reader) till() {
+func (r *reader) till() {
 	r.position = len(r.source)
 	r.location = r.calculateLocation()
 }
 
-func (r *Reader) calculateLocation() Location {
+func (r *reader) calculateLocation() Location {
 	min := len(r.source)
 	if min > r.position {
 		min = r.position

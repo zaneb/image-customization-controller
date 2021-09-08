@@ -36,11 +36,11 @@ for _, x := range &xs { // No copy
 }`
 	info.Note = "See Go issue for details: https://github.com/golang/go/issues/15812."
 
-	collection.AddChecker(&info, func(ctx *linter.CheckerContext) (linter.FileWalker, error) {
+	collection.AddChecker(&info, func(ctx *linter.CheckerContext) linter.FileWalker {
 		c := &rangeExprCopyChecker{ctx: ctx}
 		c.sizeThreshold = int64(info.Params.Int("sizeThreshold"))
 		c.skipTestFuncs = info.Params.Bool("skipTestFuncs")
-		return astwalk.WalkerForStmt(c), nil
+		return astwalk.WalkerForStmt(c)
 	})
 }
 

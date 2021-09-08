@@ -14,6 +14,8 @@ checksum:
 dockers:
 - goos: linux
   goarch: amd64
+  binaries:
+  - gomodguard
   image_templates:
   - "ryancurrah/gomodguard:latest"
   - "ryancurrah/gomodguard:{{.Tag}}"

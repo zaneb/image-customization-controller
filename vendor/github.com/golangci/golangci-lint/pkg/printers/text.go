@@ -3,7 +3,6 @@ package printers
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/fatih/color"
 
@@ -53,7 +52,7 @@ func (p *Text) Print(ctx context.Context, issues []result.Issue) error {
 }
 
 func (p Text) printIssue(i *result.Issue) {
-	text := p.SprintfColored(color.FgRed, "%s", strings.TrimSpace(i.Text))
+	text := p.SprintfColored(color.FgRed, "%s", i.Text)
 	if p.printLinterName {
 		text += fmt.Sprintf(" (%s)", i.FromLinter)
 	}

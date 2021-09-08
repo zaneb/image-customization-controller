@@ -3,14 +3,12 @@ package golinters
 import (
 	"honnef.co/go/tools/simple"
 
-	"github.com/golangci/golangci-lint/pkg/config"
 	"github.com/golangci/golangci-lint/pkg/golinters/goanalysis"
 )
 
-func NewGosimple(settings *config.StaticCheckSettings) *goanalysis.Linter {
-	cfg := staticCheckConfig(settings)
-
-	analyzers := setupStaticCheckAnalyzers(simple.Analyzers, getGoVersion(settings), cfg.Checks)
+func NewGosimple() *goanalysis.Linter {
+	analyzers := analyzersMapToSlice(simple.Analyzers)
+	setAnalyzersGoVersion(analyzers)
 
 	return goanalysis.NewLinter(
 		"gosimple",

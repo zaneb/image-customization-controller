@@ -3,11 +3,11 @@ package gomodguard
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"go/parser"
 	"go/token"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -19,28 +19,35 @@ import (
 
 const (
 	goModFilename       = "go.mod"
-	errReadingGoModFile = "unable to read module file %s: %w"
-	errParsingGoModFile = "unable to parse module file %s: %w"
+	errReadingGoModFile = "unable to read go mod file %s: %w"
+	errParsingGoModFile = "unable to parsing go mod file %s: %w"
 )
 
 var (
-	blockReasonNotInAllowedList = "import of package `%s` is blocked because the module is not in the " +
-		"allowed modules list."
-	blockReasonInBlockedList = "import of package `%s` is blocked because the module is in the " +
-		"blocked modules list."
-	blockReasonHasLocalReplaceDirective = "import of package `%s` is blocked because the module has a " +
-		"local replace directive."
+	blockReasonNotInAllowedList = "import of package `%s` is blocked because the module is not in the allowed modules list."
+	blockReasonInBlockedList    = "import of package `%s` is blocked because the module is in the blocked modules list."
 )
 
 // BlockedVersion has a version constraint a reason why the the module version is blocked.
 type BlockedVersion struct {
-	Version string `yaml:"version"`
-	Reason  string `yaml:"reason"`
+	Version             string `yaml:"version"`
+	Reason              string `yaml:"reason"`
+	lintedModuleVersion string `yaml:"-"`
 }
 
-// IsLintedModuleVersionBlocked returns true if a version constraint is specified and the
-// linted module version matches the constraint.
-func (r *BlockedVersion) IsLintedModuleVersionBlocked(lintedModuleVersion string) bool {
+// Set required values for performing checks. This must be ran before running anything else.
+func (r *BlockedVersion) Set(lintedModuleVersion string) {
+	r.lintedModuleVersion = lintedModuleVersion
+}
+
+// IsAllowed returns true if the blocked module is allowed. You must Set() values first.
+func (r *BlockedVersion) IsAllowed() bool {
+	return !r.isLintedModuleVersionBlocked()
+}
+
+// isLintedModuleVersionBlocked returns true if version constraint specified and the
+// linted module version meets the constraint.
+func (r *BlockedVersion) isLintedModuleVersionBlocked() bool {
 	if r.Version == "" {
 		return false
 	}
@@ -50,52 +57,59 @@ func (r *BlockedVersion) IsLintedModuleVersionBlocked(lintedModuleVersion string
 		return false
 	}
 
-	version, err := semver.NewVersion(lintedModuleVersion)
+	version, err := semver.NewVersion(strings.TrimLeft(r.lintedModuleVersion, "v"))
 	if err != nil {
 		return false
 	}
 
-	meet := constraint.Check(version)
-
-	return meet
+	return constraint.Check(version)
 }
 
 // Message returns the reason why the module version is blocked.
-func (r *BlockedVersion) Message(lintedModuleVersion string) string {
-	var sb strings.Builder
+func (r *BlockedVersion) Message() string {
+	msg := ""
 
-	// Add version contraint to message.
-	_, _ = fmt.Fprintf(&sb, "version `%s` is blocked because it does not meet the version constraint `%s`.",
-		lintedModuleVersion, r.Version)
+	// Add version contraint to message
+	msg += fmt.Sprintf("version `%s` is blocked because it does not meet the version constraint `%s`.", r.lintedModuleVersion, r.Version)
 
 	if r.Reason == "" {
-		return sb.String()
+		return msg
 	}
 
-	// Add reason to message.
-	_, _ = fmt.Fprintf(&sb, " %s.", strings.TrimRight(r.Reason, "."))
+	// Add reason to message
+	msg += fmt.Sprintf(" %s.", strings.TrimRight(r.Reason, "."))
 
-	return sb.String()
+	return msg
 }
 
 // BlockedModule has alternative modules to use and a reason why the module is blocked.
 type BlockedModule struct {
-	Recommendations []string `yaml:"recommendations"`
-	Reason          string   `yaml:"reason"`
+	Recommendations   []string `yaml:"recommendations"`
+	Reason            string   `yaml:"reason"`
+	currentModuleName string   `yaml:"-"`
 }
 
-// IsCurrentModuleARecommendation returns true if the current module is in the Recommendations list.
-//
-// If the current go.mod file being linted is a recommended module of a
-// blocked module and it imports that blocked module, do not set as blocked.
-// This could mean that the linted module is a wrapper for that blocked module.
-func (r *BlockedModule) IsCurrentModuleARecommendation(currentModuleName string) bool {
+// Set required values for performing checks. This must be ran before running anything else.
+func (r *BlockedModule) Set(currentModuleName string) {
+	r.currentModuleName = currentModuleName
+}
+
+// IsAllowed returns true if the blocked module is allowed. You must Set() values first.
+func (r *BlockedModule) IsAllowed() bool {
+	// If the current go.mod file being linted is a recommended module of a
+	// blocked module and it imports that blocked module, do not set as blocked.
+	// This could mean that the linted module is a wrapper for that blocked module.
+	return r.isCurrentModuleARecommendation()
+}
+
+// isCurrentModuleARecommendation returns true if the current module is in the Recommendations list.
+func (r *BlockedModule) isCurrentModuleARecommendation() bool {
 	if r == nil {
 		return false
 	}
 
 	for n := range r.Recommendations {
-		if strings.TrimSpace(currentModuleName) == strings.TrimSpace(r.Recommendations[n]) {
+		if strings.TrimSpace(r.currentModuleName) == strings.TrimSpace(r.Recommendations[n]) {
 			return true
 		}
 	}
@@ -105,34 +119,34 @@ func (r *BlockedModule) IsCurrentModuleARecommendation(currentModuleName string)
 
 // Message returns the reason why the module is blocked and a list of recommended modules if provided.
 func (r *BlockedModule) Message() string {
-	var sb strings.Builder
+	msg := ""
 
 	// Add recommendations to message
 	for i := range r.Recommendations {
 		switch {
 		case len(r.Recommendations) == 1:
-			_, _ = fmt.Fprintf(&sb, "`%s` is a recommended module.", r.Recommendations[i])
+			msg += fmt.Sprintf("`%s` is a recommended module.", r.Recommendations[i])
 		case (i+1) != len(r.Recommendations) && (i+1) == (len(r.Recommendations)-1):
-			_, _ = fmt.Fprintf(&sb, "`%s` ", r.Recommendations[i])
+			msg += fmt.Sprintf("`%s` ", r.Recommendations[i])
 		case (i + 1) != len(r.Recommendations):
-			_, _ = fmt.Fprintf(&sb, "`%s`, ", r.Recommendations[i])
+			msg += fmt.Sprintf("`%s`, ", r.Recommendations[i])
 		default:
-			_, _ = fmt.Fprintf(&sb, "and `%s` are recommended modules.", r.Recommendations[i])
+			msg += fmt.Sprintf("and `%s` are recommended modules.", r.Recommendations[i])
 		}
 	}
 
 	if r.Reason == "" {
-		return sb.String()
+		return msg
 	}
 
 	// Add reason to message
-	if sb.Len() == 0 {
-		_, _ = fmt.Fprintf(&sb, "%s.", strings.TrimRight(r.Reason, "."))
+	if msg == "" {
+		msg = fmt.Sprintf("%s.", strings.TrimRight(r.Reason, "."))
 	} else {
-		_, _ = fmt.Fprintf(&sb, " %s.", strings.TrimRight(r.Reason, "."))
+		msg += fmt.Sprintf(" %s.", strings.TrimRight(r.Reason, "."))
 	}
 
-	return sb.String()
+	return msg
 }
 
 // HasRecommendations returns true if the blocked package has
@@ -163,10 +177,11 @@ func (b BlockedVersions) Get() []string {
 }
 
 // GetBlockReason returns a block version if one is set for the provided linted module name.
-func (b BlockedVersions) GetBlockReason(lintedModuleName string) *BlockedVersion {
+func (b BlockedVersions) GetBlockReason(lintedModuleName, lintedModuleVersion string) *BlockedVersion {
 	for _, blockedModule := range b {
 		for blockedModuleName, blockedVersion := range blockedModule {
-			if strings.TrimSpace(lintedModuleName) == strings.TrimSpace(blockedModuleName) {
+			if strings.EqualFold(strings.TrimSpace(lintedModuleName), strings.TrimSpace(blockedModuleName)) {
+				blockedVersion.Set(lintedModuleVersion)
 				return &blockedVersion
 			}
 		}
@@ -193,10 +208,11 @@ func (b BlockedModules) Get() []string {
 }
 
 // GetBlockReason returns a block module if one is set for the provided linted module name.
-func (b BlockedModules) GetBlockReason(lintedModuleName string) *BlockedModule {
+func (b BlockedModules) GetBlockReason(currentModuleName, lintedModuleName string) *BlockedModule {
 	for _, blockedModule := range b {
 		for blockedModuleName, blockedModule := range blockedModule {
-			if strings.TrimSpace(lintedModuleName) == strings.TrimSpace(blockedModuleName) {
+			if strings.EqualFold(strings.TrimSpace(lintedModuleName), strings.TrimSpace(blockedModuleName)) {
+				blockedModule.Set(currentModuleName)
 				return &blockedModule
 			}
 		}
@@ -218,7 +234,7 @@ func (a *Allowed) IsAllowedModule(moduleName string) bool {
 	allowedModules := a.Modules
 
 	for i := range allowedModules {
-		if strings.TrimSpace(moduleName) == strings.TrimSpace(allowedModules[i]) {
+		if strings.EqualFold(strings.TrimSpace(moduleName), strings.TrimSpace(allowedModules[i])) {
 			return true
 		}
 	}
@@ -232,8 +248,7 @@ func (a *Allowed) IsAllowedModuleDomain(moduleName string) bool {
 	allowedDomains := a.Domains
 
 	for i := range allowedDomains {
-		if strings.HasPrefix(strings.TrimSpace(strings.ToLower(moduleName)),
-			strings.TrimSpace(strings.ToLower(allowedDomains[i]))) {
+		if strings.HasPrefix(strings.TrimSpace(strings.ToLower(moduleName)), strings.TrimSpace(strings.ToLower(allowedDomains[i]))) {
 			return true
 		}
 	}
@@ -244,9 +259,8 @@ func (a *Allowed) IsAllowedModuleDomain(moduleName string) bool {
 // Blocked is a list of modules that are
 // blocked and not to be used.
 type Blocked struct {
-	Modules                BlockedModules  `yaml:"modules"`
-	Versions               BlockedVersions `yaml:"versions"`
-	LocalReplaceDirectives bool            `yaml:"local_replace_directives"`
+	Modules  BlockedModules  `yaml:"modules"`
+	Versions BlockedVersions `yaml:"versions"`
 }
 
 // Configuration of gomodguard allow and block lists.
@@ -255,8 +269,8 @@ type Configuration struct {
 	Blocked Blocked `yaml:"blocked"`
 }
 
-// Issue represents the result of one error.
-type Issue struct {
+// Result represents the result of one error.
+type Result struct {
 	FileName   string
 	LineNumber int
 	Position   token.Position
@@ -264,68 +278,88 @@ type Issue struct {
 }
 
 // String returns the filename, line
-// number and reason of a Issue.
-func (r *Issue) String() string {
+// number and reason of a Result.
+func (r *Result) String() string {
 	return fmt.Sprintf("%s:%d:1 %s", r.FileName, r.LineNumber, r.Reason)
 }
 
 // Processor processes Go files.
 type Processor struct {
-	Config                    *Configuration
+	Config                    Configuration
+	Logger                    *log.Logger
 	Modfile                   *modfile.File
 	blockedModulesFromModFile map[string][]string
+	Result                    []Result
 }
 
 // NewProcessor will create a Processor to lint blocked packages.
-func NewProcessor(config *Configuration) (*Processor, error) {
+func NewProcessor(config Configuration, logger *log.Logger) (*Processor, error) {
 	goModFileBytes, err := loadGoModFile()
 	if err != nil {
 		return nil, fmt.Errorf(errReadingGoModFile, goModFilename, err)
 	}
 
-	modFile, err := modfile.Parse(goModFilename, goModFileBytes, nil)
+	mfile, err := modfile.Parse(goModFilename, goModFileBytes, nil)
 	if err != nil {
 		return nil, fmt.Errorf(errParsingGoModFile, goModFilename, err)
 	}
 
+	logger.Printf("info: allowed modules, %+v", config.Allowed.Modules)
+	logger.Printf("info: allowed module domains, %+v", config.Allowed.Domains)
+	logger.Printf("info: blocked modules, %+v", config.Blocked.Modules.Get())
+	logger.Printf("info: blocked modules with version constraints, %+v", config.Blocked.Versions.Get())
+
 	p := &Processor{
 		Config:  config,
-		Modfile: modFile,
+		Logger:  logger,
+		Modfile: mfile,
+		Result:  []Result{},
 	}
 
-	p.SetBlockedModules()
+	p.SetBlockedModulesFromModFile()
 
 	return p, nil
 }
 
 // ProcessFiles takes a string slice with file names (full paths)
 // and lints them.
-func (p *Processor) ProcessFiles(filenames []string) (issues []Issue) {
+func (p *Processor) ProcessFiles(filenames []string) []Result {
+	pluralModuleMsg := "s"
+	if len(p.blockedModulesFromModFile) == 1 {
+		pluralModuleMsg = ""
+	}
+
+	blockedModules := make([]string, 0, len(p.blockedModulesFromModFile))
+	for blockedModuleName := range p.blockedModulesFromModFile {
+		blockedModules = append(blockedModules, blockedModuleName)
+	}
+
+	p.Logger.Printf("info: found %d blocked module%s in %s: %+v",
+		len(p.blockedModulesFromModFile), pluralModuleMsg, goModFilename, blockedModules)
+
 	for _, filename := range filenames {
 		data, err := ioutil.ReadFile(filename)
 		if err != nil {
-			issues = append(issues, Issue{
+			p.Result = append(p.Result, Result{
 				FileName:   filename,
 				LineNumber: 0,
 				Reason:     fmt.Sprintf("unable to read file, file cannot be linted (%s)", err.Error()),
 			})
-
-			continue
 		}
 
-		issues = append(issues, p.process(filename, data)...)
+		p.process(filename, data)
 	}
 
-	return issues
+	return p.Result
 }
 
 // process file imports and add lint error if blocked package is imported.
-func (p *Processor) process(filename string, data []byte) (issues []Issue) {
+func (p *Processor) process(filename string, data []byte) {
 	fileSet := token.NewFileSet()
 
 	file, err := parser.ParseFile(fileSet, filename, data, parser.ParseComments)
 	if err != nil {
-		issues = append(issues, Issue{
+		p.Result = append(p.Result, Result{
 			FileName:   filename,
 			LineNumber: 0,
 			Reason:     fmt.Sprintf("invalid syntax, file cannot be linted (%s)", err.Error()),
@@ -344,40 +378,34 @@ func (p *Processor) process(filename string, data []byte) (issues []Issue) {
 		}
 
 		for _, blockReason := range blockReasons {
-			issues = append(issues, p.addError(fileSet, imports[n].Pos(), blockReason))
+			p.addError(fileSet, imports[n].Pos(), blockReason)
 		}
 	}
-
-	return issues
 }
 
 // addError adds an error for the file and line number for the current token.Pos
 // with the given reason.
-func (p *Processor) addError(fileset *token.FileSet, pos token.Pos, reason string) Issue {
+func (p *Processor) addError(fileset *token.FileSet, pos token.Pos, reason string) {
 	position := fileset.Position(pos)
 
-	return Issue{
+	p.Result = append(p.Result, Result{
 		FileName:   position.Filename,
 		LineNumber: position.Line,
 		Position:   position,
 		Reason:     reason,
-	}
+	})
 }
 
-// SetBlockedModules determines and sets which modules are blocked by reading
-// the go.mod file of the module that is being linted.
-//
-// It works by iterating over the dependant modules specified in the require
-// directive, checking if the module domain or full name is in the allowed list.
-func (p *Processor) SetBlockedModules() { //nolint:gocognit,funlen
+// SetBlockedModulesFromModFile determines which modules are blocked by reading
+// the go.mod file and comparing the require modules to the allowed modules.
+func (p *Processor) SetBlockedModulesFromModFile() {
 	blockedModules := make(map[string][]string, len(p.Modfile.Require))
 	currentModuleName := p.Modfile.Module.Mod.Path
 	lintedModules := p.Modfile.Require
-	replacedModules := p.Modfile.Replace
 
 	for i := range lintedModules {
 		if lintedModules[i].Indirect {
-			continue // Do not lint indirect modules.
+			continue
 		}
 
 		lintedModuleName := strings.TrimSpace(lintedModules[i].Mod.Path)
@@ -396,38 +424,20 @@ func (p *Processor) SetBlockedModules() { //nolint:gocognit,funlen
 			isAllowed = false
 		}
 
-		blockModuleReason := p.Config.Blocked.Modules.GetBlockReason(lintedModuleName)
-		blockVersionReason := p.Config.Blocked.Versions.GetBlockReason(lintedModuleName)
+		blockModuleReason := p.Config.Blocked.Modules.GetBlockReason(currentModuleName, lintedModuleName)
+		blockVersionReason := p.Config.Blocked.Versions.GetBlockReason(lintedModuleName, lintedModuleVersion)
 
 		if !isAllowed && blockModuleReason == nil && blockVersionReason == nil {
 			blockedModules[lintedModuleName] = append(blockedModules[lintedModuleName], blockReasonNotInAllowedList)
 			continue
 		}
 
-		if blockModuleReason != nil && !blockModuleReason.IsCurrentModuleARecommendation(currentModuleName) {
-			blockedModules[lintedModuleName] = append(blockedModules[lintedModuleName],
-				fmt.Sprintf("%s %s", blockReasonInBlockedList, blockModuleReason.Message()))
+		if blockModuleReason != nil && !blockModuleReason.IsAllowed() {
+			blockedModules[lintedModuleName] = append(blockedModules[lintedModuleName], fmt.Sprintf("%s %s", blockReasonInBlockedList, blockModuleReason.Message()))
 		}
 
-		if blockVersionReason != nil && blockVersionReason.IsLintedModuleVersionBlocked(lintedModuleVersion) {
-			blockedModules[lintedModuleName] = append(blockedModules[lintedModuleName],
-				fmt.Sprintf("%s %s", blockReasonInBlockedList, blockVersionReason.Message(lintedModuleVersion)))
-		}
-	}
-
-	// Replace directives with local paths are blocked.
-	// Filesystem paths found in "replace" directives are represented by a path with an empty version.
-	// https://github.com/golang/mod/blob/bc388b264a244501debfb9caea700c6dcaff10e2/module/module.go#L122-L124
-	if p.Config.Blocked.LocalReplaceDirectives {
-		for i := range replacedModules {
-			replacedModuleOldName := strings.TrimSpace(replacedModules[i].Old.Path)
-			replacedModuleNewName := strings.TrimSpace(replacedModules[i].New.Path)
-			replacedModuleNewVersion := strings.TrimSpace(replacedModules[i].New.Version)
-
-			if replacedModuleNewName != "" && replacedModuleNewVersion == "" {
-				blockedModules[replacedModuleOldName] = append(blockedModules[replacedModuleOldName],
-					blockReasonHasLocalReplaceDirective)
-			}
+		if blockVersionReason != nil && !blockVersionReason.IsAllowed() {
+			blockedModules[lintedModuleName] = append(blockedModules[lintedModuleName], fmt.Sprintf("%s %s", blockReasonInBlockedList, blockVersionReason.Message()))
 		}
 	}
 
@@ -474,12 +484,8 @@ func loadGoModFile() ([]byte, error) {
 		return ioutil.ReadFile(goModFilename)
 	}
 
-	if _, err = os.Stat(goEnv["GOMOD"]); os.IsNotExist(err) {
+	if _, err := os.Stat(goEnv["GOMOD"]); os.IsNotExist(err) {
 		return ioutil.ReadFile(goModFilename)
-	}
-
-	if goEnv["GOMOD"] == "/dev/null" {
-		return nil, errors.New("current working directory must have a go.mod file")
 	}
 
 	return ioutil.ReadFile(goEnv["GOMOD"])

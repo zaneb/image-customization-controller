@@ -11,7 +11,7 @@ GOBIN ?= $(GOPATH)/bin
 GOLINT ?= $(GOBIN)/golint
 GOSEC ?= $(GOBIN)/gosec
 GINKGO ?= $(GOBIN)/ginkgo
-GO_VERSION = 1.15
+GO_VERSION = 1.14
 
 default:
 	$(MAKE) build
@@ -41,7 +41,7 @@ sec:
 	./$(BIN) ./...
 
 test-coverage: install-test-deps
-	go test -race -v -count=1 -coverprofile=coverage.out ./...
+	go test -race -coverprofile=coverage.txt -covermode=atomic
 
 build:
 	go build -o $(BIN) ./cmd/gosec/

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/alexkohler/prealloc/pkg"
+	"github.com/golangci/prealloc"
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/golangci/golangci-lint/pkg/golinters/goanalysis"
@@ -32,7 +32,7 @@ func NewPrealloc() *goanalysis.Linter {
 
 		analyzer.Run = func(pass *analysis.Pass) (interface{}, error) {
 			var res []goanalysis.Issue
-			hints := pkg.Check(pass.Files, s.Simple, s.RangeLoops, s.ForLoops)
+			hints := prealloc.Check(pass.Files, s.Simple, s.RangeLoops, s.ForLoops)
 			for _, hint := range hints {
 				res = append(res, goanalysis.NewIssue(&result.Issue{
 					Pos:        pass.Fset.Position(hint.Pos),

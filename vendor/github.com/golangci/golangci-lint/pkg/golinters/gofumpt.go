@@ -11,7 +11,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"mvdan.cc/gofumpt/format"
 
-	"github.com/golangci/golangci-lint/pkg/config"
 	"github.com/golangci/golangci-lint/pkg/golinters/goanalysis"
 	"github.com/golangci/golangci-lint/pkg/lint/linter"
 )
@@ -33,13 +32,6 @@ func NewGofumpt() *goanalysis.Linter {
 		[]*analysis.Analyzer{analyzer},
 		nil,
 	).WithContextSetter(func(lintCtx *linter.Context) {
-		settings := lintCtx.Settings().Gofumpt
-
-		options := format.Options{
-			LangVersion: getLangVersion(settings),
-			ExtraRules:  settings.ExtraRules,
-		}
-
 		analyzer.Run = func(pass *analysis.Pass) (interface{}, error) {
 			var fileNames []string
 			for _, f := range pass.Files {
@@ -54,12 +46,12 @@ func NewGofumpt() *goanalysis.Linter {
 				if err != nil {
 					return nil, fmt.Errorf("unable to open file %s: %w", f, err)
 				}
-
-				output, err := format.Source(input, options)
+				output, err := format.Source(input, format.Options{
+					ExtraRules: lintCtx.Settings().Gofumpt.ExtraRules,
+				})
 				if err != nil {
 					return nil, fmt.Errorf("error while running gofumpt: %w", err)
 				}
-
 				if !bytes.Equal(input, output) {
 					out := bytes.Buffer{}
 					_, err = out.WriteString(fmt.Sprintf("--- %[1]s\n+++ %[1]s\n", f))
@@ -97,12 +89,4 @@ func NewGofumpt() *goanalysis.Linter {
 	}).WithIssuesReporter(func(*linter.Context) []goanalysis.Issue {
 		return resIssues
 	}).WithLoadMode(goanalysis.LoadModeSyntax)
-}
-
-func getLangVersion(settings config.GofumptSettings) string {
-	if settings.LangVersion == "" {
-		// TODO: defaults to "1.15", in the future (v2) must be set by using build.Default.ReleaseTags like staticcheck.
-		return "1.15"
-	}
-	return settings.LangVersion
 }

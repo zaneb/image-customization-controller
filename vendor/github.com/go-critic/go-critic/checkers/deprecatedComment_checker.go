@@ -21,7 +21,7 @@ func FuncOld() int`
 // Deprecated: use FuncNew instead
 func FuncOld() int`
 
-	collection.AddChecker(&info, func(ctx *linter.CheckerContext) (linter.FileWalker, error) {
+	collection.AddChecker(&info, func(ctx *linter.CheckerContext) linter.FileWalker {
 		c := &deprecatedCommentChecker{ctx: ctx}
 
 		c.commonPatterns = []*regexp.Regexp{
@@ -55,7 +55,7 @@ func FuncOld() int`
 			c.commonTypos[i] = strings.ToUpper(c.commonTypos[i])
 		}
 
-		return astwalk.WalkerForDocComment(c), nil
+		return astwalk.WalkerForDocComment(c)
 	})
 }
 

@@ -26,13 +26,13 @@ func Foo() {}
 // Foo is a demonstration-only function.
 func Foo() {}`
 
-	collection.AddChecker(&info, func(ctx *linter.CheckerContext) (linter.FileWalker, error) {
+	collection.AddChecker(&info, func(ctx *linter.CheckerContext) linter.FileWalker {
 		re := `(?i)^\.\.\.$|^\.$|^xxx\.?$|^whatever\.?$`
 		c := &docStubChecker{
 			ctx:           ctx,
 			stubCommentRE: regexp.MustCompile(re),
 		}
-		return c, nil
+		return c
 	})
 }
 

@@ -22,7 +22,7 @@ type CheckerCollection struct {
 //
 // If checker is never needed, for example if it is disabled,
 // constructor will not be called.
-func (coll *CheckerCollection) AddChecker(info *CheckerInfo, constructor func(*CheckerContext) (FileWalker, error)) {
+func (coll *CheckerCollection) AddChecker(info *CheckerInfo, constructor func(*CheckerContext) FileWalker) {
 	if coll == nil {
 		panic("adding checker to a nil collection")
 	}
@@ -138,9 +138,8 @@ type Warning struct {
 
 // NewChecker returns initialized checker identified by an info.
 // info must be non-nil.
-// Returns an error if info describes a checker that was not properly registered,
-// or if checker fails to initialize.
-func NewChecker(ctx *Context, info *CheckerInfo) (*Checker, error) {
+// Panics if info describes a checker that was not properly registered.
+func NewChecker(ctx *Context, info *CheckerInfo) *Checker {
 	return newChecker(ctx, info)
 }
 
@@ -237,27 +236,6 @@ func (ctx *CheckerContext) Warn(node ast.Node, format string, args ...interface{
 		Text: ctx.printer.Sprintf(format, args...),
 		Node: node,
 	})
-}
-
-// UnknownType is a special sentinel value that is returned from the CheckerContext.TypeOf
-// method instead of the nil type.
-var UnknownType types.Type = types.Typ[types.Invalid]
-
-// TypeOf returns the type of expression x.
-//
-// Unlike TypesInfo.TypeOf, it never returns nil.
-// Instead, it returns the Invalid type as a sentinel UnknownType value.
-func (ctx *CheckerContext) TypeOf(x ast.Expr) types.Type {
-	typ := ctx.TypesInfo.TypeOf(x)
-	if typ != nil {
-		return typ
-	}
-	// Usually it means that some incorrect type info was loaded
-	// or the analyzed package was only partially (?) correct.
-	// To avoid nil pointer panics we can return a sentinel value
-	// that will fail most type assertions as well as kind checks
-	// (if the call side expects a *types.Basic).
-	return UnknownType
 }
 
 // FileWalker is an interface every checker should implement.

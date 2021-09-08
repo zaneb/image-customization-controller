@@ -1,10 +1,12 @@
+// nolint:dupl
 package golinters
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 
-	"github.com/fzipp/gocyclo"
+	gocycloAPI "github.com/golangci/gocyclo/pkg/gocyclo"
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/golangci/golangci-lint/pkg/golinters/goanalysis"
@@ -29,18 +31,24 @@ func NewGocyclo() *goanalysis.Linter {
 		nil,
 	).WithContextSetter(func(lintCtx *linter.Context) {
 		analyzer.Run = func(pass *analysis.Pass) (interface{}, error) {
-			var stats gocyclo.Stats
+			var stats []gocycloAPI.Stat
 			for _, f := range pass.Files {
-				stats = gocyclo.AnalyzeASTFile(f, pass.Fset, stats)
+				stats = gocycloAPI.BuildStats(f, pass.Fset, stats)
 			}
 			if len(stats) == 0 {
 				return nil, nil
 			}
 
-			stats = stats.SortAndFilter(-1, lintCtx.Settings().Gocyclo.MinComplexity)
+			sort.SliceStable(stats, func(i, j int) bool {
+				return stats[i].Complexity > stats[j].Complexity
+			})
 
 			res := make([]goanalysis.Issue, 0, len(stats))
 			for _, s := range stats {
+				if s.Complexity <= lintCtx.Settings().Gocyclo.MinComplexity {
+					break // Break as the stats is already sorted from greatest to least
+				}
+
 				res = append(res, goanalysis.NewIssue(&result.Issue{
 					Pos: s.Pos,
 					Text: fmt.Sprintf("cyclomatic complexity %d of func %s is high (> %d)",

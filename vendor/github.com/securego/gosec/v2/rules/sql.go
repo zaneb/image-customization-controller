@@ -186,7 +186,7 @@ func (s *sqlStrFormat) checkQuery(call *ast.CallExpr, ctx *gosec.Context) (*gose
 		decl := ident.Obj.Decl
 		if assign, ok := decl.(*ast.AssignStmt); ok {
 			for _, expr := range assign.Rhs {
-				issue := s.checkFormatting(expr, ctx)
+				issue, err := s.checkFormatting(expr, ctx)
 				if issue != nil {
 					return issue, err
 				}
@@ -197,7 +197,7 @@ func (s *sqlStrFormat) checkQuery(call *ast.CallExpr, ctx *gosec.Context) (*gose
 	return nil, nil
 }
 
-func (s *sqlStrFormat) checkFormatting(n ast.Node, ctx *gosec.Context) *gosec.Issue {
+func (s *sqlStrFormat) checkFormatting(n ast.Node, ctx *gosec.Context) (*gosec.Issue, error) {
 	// argIndex changes the function argument which gets matched to the regex
 	argIndex := 0
 	if node := s.fmtCalls.ContainsPkgCallExpr(n, ctx, false); node != nil {
@@ -208,7 +208,7 @@ func (s *sqlStrFormat) checkFormatting(n ast.Node, ctx *gosec.Context) *gosec.Is
 				if arg, ok := node.Args[0].(*ast.SelectorExpr); ok {
 					if ident, ok := arg.X.(*ast.Ident); ok {
 						if s.noIssue.Contains(ident.Name, arg.Sel.Name) {
-							return nil
+							return nil, nil
 						}
 					}
 				}
@@ -219,7 +219,7 @@ func (s *sqlStrFormat) checkFormatting(n ast.Node, ctx *gosec.Context) *gosec.Is
 
 		// no formatter
 		if len(node.Args) == 0 {
-			return nil
+			return nil, nil
 		}
 
 		var formatter string
@@ -233,7 +233,7 @@ func (s *sqlStrFormat) checkFormatting(n ast.Node, ctx *gosec.Context) *gosec.Is
 			formatter = arg
 		}
 		if len(formatter) <= 0 {
-			return nil
+			return nil, nil
 		}
 
 		// If all formatter args are quoted or constant, then the SQL construction is safe
@@ -246,14 +246,14 @@ func (s *sqlStrFormat) checkFormatting(n ast.Node, ctx *gosec.Context) *gosec.Is
 				}
 			}
 			if allSafe {
-				return nil
+				return nil, nil
 			}
 		}
 		if s.MatchPatterns(formatter) {
-			return gosec.NewIssue(ctx, n, s.ID(), s.What, s.Severity, s.Confidence)
+			return gosec.NewIssue(ctx, n, s.ID(), s.What, s.Severity, s.Confidence), nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // Check SQL query formatting issues such as "fmt.Sprintf("SELECT * FROM foo where '%s', userInput)"

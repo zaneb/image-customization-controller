@@ -18,7 +18,7 @@ func init() {
 	info.Before = "regexp.MustCompile(`google.com|yandex.ru`)"
 	info.After = "regexp.MustCompile(`google\\.com|yandex\\.ru`)"
 
-	collection.AddChecker(&info, func(ctx *linter.CheckerContext) (linter.FileWalker, error) {
+	collection.AddChecker(&info, func(ctx *linter.CheckerContext) linter.FileWalker {
 		domains := []string{
 			"com",
 			"org",
@@ -33,7 +33,7 @@ func init() {
 		return astwalk.WalkerForExpr(&regexpPatternChecker{
 			ctx:      ctx,
 			domainRE: domainRE,
-		}), nil
+		})
 	})
 }
 

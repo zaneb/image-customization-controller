@@ -5,29 +5,13 @@ import (
 )
 
 const (
-	PresetBugs        = "bugs"        // Related to bugs detection.
-	PresetComment     = "comment"     // Related to comments analysis.
-	PresetComplexity  = "complexity"  // Related to code complexity analysis.
-	PresetError       = "error"       // Related to error handling analysis.
-	PresetFormatting  = "format"      // Related to code formatting.
-	PresetImport      = "import"      // Related to imports analysis.
-	PresetMetaLinter  = "metalinter"  // Related to linter that contains multiple rules or multiple linters.
-	PresetModule      = "module"      // Related to Go modules analysis.
-	PresetPerformance = "performance" // Related to performance.
-	PresetSQL         = "sql"         // Related to SQL.
-	PresetStyle       = "style"       // Related to coding style.
-	PresetTest        = "test"        // Related to the analysis of the code of the tests.
-	PresetUnused      = "unused"      // Related to the detection of unused code.
+	PresetFormatting  = "format"
+	PresetComplexity  = "complexity"
+	PresetStyle       = "style"
+	PresetBugs        = "bugs"
+	PresetUnused      = "unused"
+	PresetPerformance = "performance"
 )
-
-// LastLinter nolintlint must be last because it looks at the results of all the previous linters for unused nolint directives.
-const LastLinter = "nolintlint"
-
-type Deprecation struct {
-	Since       string
-	Message     string
-	Replacement string
-}
 
 type Config struct {
 	Linter           Linter
@@ -42,9 +26,6 @@ type Config struct {
 	CanAutoFix      bool
 	IsSlow          bool
 	DoesChangeTypes bool
-
-	Since       string
-	Deprecation *Deprecation
 }
 
 func (lc *Config) ConsiderSlow() *Config {
@@ -53,7 +34,7 @@ func (lc *Config) ConsiderSlow() *Config {
 }
 
 func (lc *Config) IsSlowLinter() bool {
-	return lc.IsSlow
+	return lc.IsSlow || (lc.LoadMode&packages.NeedTypesInfo != 0 && lc.LoadMode&packages.NeedDeps != 0)
 }
 
 func (lc *Config) WithLoadFiles() *Config {
@@ -64,7 +45,6 @@ func (lc *Config) WithLoadFiles() *Config {
 func (lc *Config) WithLoadForGoAnalysis() *Config {
 	lc = lc.WithLoadFiles()
 	lc.LoadMode |= packages.NeedImports | packages.NeedDeps | packages.NeedExportsFile | packages.NeedTypesSizes
-	lc.IsSlow = true
 	return lc
 }
 
@@ -91,24 +71,6 @@ func (lc *Config) WithAutoFix() *Config {
 func (lc *Config) WithChangeTypes() *Config {
 	lc.DoesChangeTypes = true
 	return lc
-}
-
-func (lc *Config) WithSince(version string) *Config {
-	lc.Since = version
-	return lc
-}
-
-func (lc *Config) Deprecated(message, version, replacement string) *Config {
-	lc.Deprecation = &Deprecation{
-		Since:       version,
-		Message:     message,
-		Replacement: replacement,
-	}
-	return lc
-}
-
-func (lc *Config) IsDeprecated() bool {
-	return lc.Deprecation != nil
 }
 
 func (lc *Config) AllNames() []string {
