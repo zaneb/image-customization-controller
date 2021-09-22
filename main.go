@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 
@@ -84,7 +85,7 @@ func main() {
 		"Namespace that the controller watches to reconcile host resources.")
 	flag.StringVar(&imagesBindAddr, "images-bind-addr", ":8084",
 		"The address the images endpoint binds to.")
-	flag.StringVar(&imagesPublishAddr, "images-publish-addr", "127.0.0.1:8084",
+	flag.StringVar(&imagesPublishAddr, "images-publish-addr", "http://127.0.0.1:8084",
 		"The address clients would access the images endpoint from.")
 	flag.Parse()
 
@@ -95,6 +96,12 @@ func main() {
 	iso := os.Getenv("DEPLOY_ISO")
 	if iso == "" {
 		setupLog.Info("No DEPLOY_ISO specified")
+		os.Exit(1)
+	}
+
+	_, err := url.Parse(imagesPublishAddr)
+	if err != nil {
+		setupLog.Error(err, "imagesPublishAddr is not parsable")
 		os.Exit(1)
 	}
 
