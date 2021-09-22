@@ -17,6 +17,7 @@ package controllers
 import (
 	"context"
 	"errors"
+	"os"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -31,6 +32,7 @@ import (
 
 	metal3 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/metal3-io/baremetal-operator/pkg/secretutils"
+	"github.com/openshift/image-customization-controller/pkg/ignition"
 	"github.com/openshift/image-customization-controller/pkg/imagehandler"
 )
 
@@ -104,7 +106,7 @@ func (r *PreprovisioningImageReconciler) reconcile(ctx context.Context, img *met
 		return setError(ctx, generation, &img.Status, reasonUnexpectedError, err.Error()), err
 	}
 
-	netData, err := gatherNetworkData(secret)
+	ignitionConfig, err := buildIgnitionConfig(secret)
 	if err != nil {
 		return setError(ctx, generation, &img.Status, reasonConfigurationError, err.Error()), err
 	}
@@ -112,7 +114,7 @@ func (r *PreprovisioningImageReconciler) reconcile(ctx context.Context, img *met
 	format := metal3.ImageFormatISO
 	imageName := img.Name + ".qcow"
 
-	url, err := r.ImageHandler.ServeImage(imageName, netData)
+	url, err := r.ImageHandler.ServeImage(imageName, ignitionConfig)
 	if err != nil {
 		return setError(ctx, generation, &img.Status, reasonImageServingError, err.Error()), err
 	}
@@ -142,16 +144,23 @@ func errorRetryDelay(status metal3.PreprovisioningImageStatus) time.Duration {
 	return delay
 }
 
-func gatherNetworkData(secret *corev1.Secret) ([]byte, error) {
+func buildIgnitionConfig(secret *corev1.Secret) ([]byte, error) {
 	if secret == nil {
 		return nil, nil
 	}
-	// TODO not yet sure what to do here, this is just something for testing.
-	netData, ok := secret.Data["network"]
+	nmstate, ok := secret.Data["nmstate"]
 	if !ok {
-		return nil, errors.New("network data in the secret has the incorrect format")
+		return nil, errors.New("nmstate data not in the secret")
 	}
-	return netData, nil
+
+	builder := ignition.New(nmstate,
+		os.Getenv("IRONIC_BASE_URL"),
+		os.Getenv("IRONIC_AGENT_IMAGE"),
+		os.Getenv("IRONIC_AGENT_PULL_SECRET"),
+		os.Getenv("IRONIC_RAMDISK_SSH_KEY"),
+	)
+
+	return builder.Generate()
 }
 
 func networkDataSecret(secretManager secretutils.SecretManager, img *metal3.PreprovisioningImage) (*corev1.Secret, error) {

@@ -93,10 +93,12 @@ func main() {
 
 	printVersion()
 
-	iso := os.Getenv("DEPLOY_ISO")
-	if iso == "" {
-		setupLog.Info("No DEPLOY_ISO specified")
-		os.Exit(1)
+	for _, env := range []string{"IRONIC_BASE_URL", "DEPLOY_ISO"} {
+		val := os.Getenv(env)
+		if val == "" {
+			setupLog.Info("Missing environment", "variable", env)
+			os.Exit(1)
+		}
 	}
 
 	_, err := url.Parse(imagesPublishAddr)
@@ -105,7 +107,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), iso, imagesPublishAddr)
+	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), os.Getenv("DEPLOY_ISO"), imagesPublishAddr)
 	// why use a FileServer?
 	// 1. it streams files efficiently
 	// 2. if we cache these images, then that will be an easy change.

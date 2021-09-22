@@ -11,6 +11,15 @@ curl https://releases-art-rhcos.svc.ci.openshift.org/art/storage/releases/rhcos-
 3. run the controller
 ```
 export DEPLOY_ISO=$HOME/rhcos-49.84.202107010027-0-live.x86_64.iso
+
+# https://github.com/openshift/ironic-image/blob/master/scripts/ironic-common.sh
+#
+export IRONIC_BASE_URL=http[s]://${IRONIC_IP} # required
+export IRONIC_AGENT_IMAGE= ? # required
+
+export IRONIC_AGENT_PULL_SECRET= # optional see cbo
+export IRONIC_RAMDISK_SSH_KEY= # optional see cbo
+
 go1.16 run .
 ```
 
