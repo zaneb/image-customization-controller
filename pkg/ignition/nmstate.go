@@ -9,7 +9,7 @@ type nmstateOutput struct {
 	NetworkManager [][]string `yaml:"NetworkManager"`
 }
 
-func (b *ignitionBuilder) nmstateOutputToFiles(generatedConfig []byte) ([]ignition_config_types_32.File, error) {
+func nmstateOutputToFiles(generatedConfig []byte) ([]ignition_config_types_32.File, error) {
 	files := []ignition_config_types_32.File{}
 
 	networkManagerConfig := &nmstateOutput{}

@@ -77,7 +77,7 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 			return nil, err
 		}
 
-		files, err := b.nmstateOutputToFiles(out)
+		files, err := nmstateOutputToFiles(out)
 		if err != nil {
 			return nil, err
 		}

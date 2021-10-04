@@ -178,8 +178,7 @@ method=disabled
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := &ignitionBuilder{}
-			got, err := b.nmstateOutputToFiles(tt.generatedConfig)
+			got, err := nmstateOutputToFiles(tt.generatedConfig)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ignitionBuilder.nmstateOutputToFiles() error = %v, wantErr %v", err, tt.wantErr)
 				return

@@ -53,7 +53,7 @@ func (f *imageFileSystem) Open(name string) (http.File, error) {
 	if name == "/" {
 		return f, nil
 	}
-	// if we need caching and it is cached, return the real file here
+
 	im := f.imageFileByName(path.Base(name))
 	if im == nil {
 		return nil, fs.ErrNotExist

@@ -23,7 +23,7 @@ import (
 )
 
 // imageFileSystem is an http.FileSystem that creates a virtual filesystem of
-// host images. These *could* be later cached as real files.
+// host images.
 type imageFileSystem struct {
 	isoFile     string
 	isoFileSize int64
