@@ -25,16 +25,16 @@ import (
 	"os"
 	"runtime"
 
-	corev1 "k8s.io/api/core/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	metal3iov1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
+	"github.com/metal3-io/baremetal-operator/pkg/secretutils"
 	"github.com/metal3-io/baremetal-operator/pkg/version"
 	metal3iocontroller "github.com/openshift/image-customization-controller/controllers/metal3.io"
 	"github.com/openshift/image-customization-controller/pkg/imagehandler"
@@ -119,10 +119,12 @@ func main() {
 	}()
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                scheme,
-		Port:                  0, // Add flag with default of 9443 when adding webhooks
-		Namespace:             watchNamespace,
-		ClientDisableCacheFor: []client.Object{&corev1.Secret{}},
+		Scheme:    scheme,
+		Port:      0, // Add flag with default of 9443 when adding webhooks
+		Namespace: watchNamespace,
+		NewCache: cache.BuilderWithOptions(cache.Options{
+			SelectorsByObject: secretutils.AddSecretSelector(nil),
+		}),
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
