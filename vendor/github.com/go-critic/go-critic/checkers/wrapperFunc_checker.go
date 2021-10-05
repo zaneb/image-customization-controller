@@ -19,7 +19,7 @@ func init() {
 	info.Before = `wg.Add(-1)`
 	info.After = `wg.Done()`
 
-	collection.AddChecker(&info, func(ctx *linter.CheckerContext) (linter.FileWalker, error) {
+	collection.AddChecker(&info, func(ctx *linter.CheckerContext) linter.FileWalker {
 		type arg struct {
 			index int
 			value string
@@ -190,7 +190,7 @@ func init() {
 				}
 			}
 
-			typ := c.ctx.TypeOf(x)
+			typ := c.ctx.TypesInfo.TypeOf(x)
 			tn, ok := typ.(*types.Named)
 			if !ok {
 				return ""
@@ -202,7 +202,7 @@ func init() {
 				m.typPatterns)
 		}
 
-		return astwalk.WalkerForExpr(c), nil
+		return astwalk.WalkerForExpr(c)
 	})
 }
 

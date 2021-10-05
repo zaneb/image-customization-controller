@@ -1,8 +1,6 @@
 package astwalk
 
-import (
-	"go/ast"
-)
+import "go/ast"
 
 type funcDeclWalker struct {
 	visitor FuncDeclVisitor

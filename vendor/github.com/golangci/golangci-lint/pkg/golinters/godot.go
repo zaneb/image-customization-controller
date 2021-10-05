@@ -28,30 +28,12 @@ func NewGodot() *goanalysis.Linter {
 		nil,
 	).WithContextSetter(func(lintCtx *linter.Context) {
 		cfg := lintCtx.Cfg.LintersSettings.Godot
-		settings := godot.Settings{
-			Scope:   godot.Scope(cfg.Scope),
-			Exclude: cfg.Exclude,
-			Period:  true,
-			Capital: cfg.Capital,
-		}
-
-		// Convert deprecated setting
-		if cfg.CheckAll { // nolint: staticcheck
-			settings.Scope = godot.TopLevelScope
-		}
-
-		if settings.Scope == "" {
-			settings.Scope = godot.DeclScope
-		}
+		settings := godot.Settings{CheckAll: cfg.CheckAll}
 
 		analyzer.Run = func(pass *analysis.Pass) (interface{}, error) {
 			var issues []godot.Issue
 			for _, file := range pass.Files {
-				iss, err := godot.Run(file, pass.Fset, settings)
-				if err != nil {
-					return nil, err
-				}
-				issues = append(issues, iss...)
+				issues = append(issues, godot.Run(file, pass.Fset, settings)...)
 			}
 
 			if len(issues) == 0 {

@@ -1,7 +1,3 @@
-.PHONY: dep
-dep:
-	go mod tidy && go mod verify
-
 .PHONY: test
 test:
 	go test ./...

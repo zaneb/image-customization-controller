@@ -26,29 +26,6 @@ go get -u github.com/tetafro/godot/cmd/godot
 
 or download binary from [releases page](https://github.com/tetafro/godot/releases).
 
-## Config
-
-You can specify options using config file. Use default name `.godot.yaml`, or
-set it using `-c filename.yaml` argument. If no config provided the following
-defaults are used:
-
-```yaml
-# Which comments to check:
-#   declarations - for top level declaration comments (default);
-#   toplevel     - for top level comments;
-#   all          - for all comments.
-scope: declarations
-
-# List pf regexps for excluding particular comment lines from check.
-exclude:
-
-# Check periods at the end of sentences.
-period: true
-
-# Check that first letter of each sentence is capital.
-capital: false
-```
-
 ## Run
 
 ```sh
@@ -62,9 +39,7 @@ godot -f ./myproject # fix issues and print the result
 godot -w ./myproject # fix issues and replace the original file
 ```
 
-See all flags with `godot -h`.
-
-## Example
+## Examples
 
 Code
 
@@ -80,5 +55,9 @@ func Sum(a, b int) int {
 Output
 
 ```sh
-Comment should end in a period: math/math.go:3:1
+Top level comment should end in a period: math/math.go:3:1
 ```
+
+See more examples in test files:
+- [for default mode](testdata/default/in/main.go)
+- [for using --all flag](testdata/checkall/in/main.go)

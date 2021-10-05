@@ -170,7 +170,7 @@ func (f *fumpter) addNewline(at token.Pos) {
 	}
 }
 
-// removeLines removes all newlines between two positions, so that they end
+// removeNewlines removes all newlines between two positions, so that they end
 // up on the same line.
 func (f *fumpter) removeLines(fromLine, toLine int) {
 	for fromLine < toLine {
@@ -212,17 +212,14 @@ func (f *fumpter) printLength(node ast.Node) int {
 
 // rxCommentDirective covers all common Go comment directives:
 //
-//   //go:         | standard Go directives, like go:noinline
-//   //some-words: | similar to the syntax above, like lint:ignore or go-sumtype:decl
-//   //line        | inserted line information for cmd/compile
-//   //export      | to mark cgo funcs for exporting
-//   //extern      | C function declarations for gccgo
-//   //sys(nb)?    | syscall function wrapper prototypes
-//   //nolint      | nolint directive for golangci
-//
-// Note that the "some-words:" matching expects a letter afterward, such as
-// "go:generate", to prevent matching false positives like "https://site".
-var rxCommentDirective = regexp.MustCompile(`^([a-z-]+:[a-z]+|line\b|export\b|extern\b|sys(nb)?\b|nolint\b)`)
+//   //go:        | standard Go directives, like go:noinline
+//   //someword:  | similar to the syntax above, like lint:ignore
+//   //line       | inserted line information for cmd/compile
+//   //export     | to mark cgo funcs for exporting
+//   //extern     | C function declarations for gccgo
+//   //sys(nb)?   | syscall function wrapper prototypes
+//   //nolint     | nolint directive for golangci
+var rxCommentDirective = regexp.MustCompile(`^([a-z]+:|line\b|export\b|extern\b|sys(nb)?\b|nolint\b)`)
 
 // visit takes either an ast.Node or a []ast.Stmt.
 func (f *fumpter) applyPre(c *astutil.Cursor) {
@@ -253,7 +250,7 @@ func (f *fumpter) applyPre(c *astutil.Cursor) {
 		for i := 0; i < len(node.Decls); {
 			newDecls = append(newDecls, node.Decls[i])
 			start, ok := node.Decls[i].(*ast.GenDecl)
-			if !ok || isCgoImport(start) {
+			if !ok {
 				i++
 				continue
 			}
@@ -261,7 +258,7 @@ func (f *fumpter) applyPre(c *astutil.Cursor) {
 			for i++; i < len(node.Decls); {
 				cont, ok := node.Decls[i].(*ast.GenDecl)
 				if !ok || cont.Tok != start.Tok || cont.Lparen != token.NoPos ||
-					f.Line(lastPos) < f.Line(cont.Pos())-1 || isCgoImport(cont) {
+					f.Line(lastPos) < f.Line(cont.Pos())-1 {
 					break
 				}
 				start.Specs = append(start.Specs, cont.Specs...)
@@ -363,20 +360,15 @@ func (f *fumpter) applyPre(c *astutil.Cursor) {
 			break
 		}
 
-		var sign *ast.FuncType
-		var cond ast.Expr
-		switch parent := c.Parent().(type) {
+		isFuncBody := false
+		switch c.Parent().(type) {
 		case *ast.FuncDecl:
-			sign = parent.Type
+			isFuncBody = true
 		case *ast.FuncLit:
-			sign = parent.Type
-		case *ast.IfStmt:
-			cond = parent.Cond
-		case *ast.ForStmt:
-			cond = parent.Cond
+			isFuncBody = true
 		}
 
-		if len(node.List) > 1 && sign == nil {
+		if len(node.List) > 1 && !isFuncBody {
 			// only if we have a single statement, or if
 			// it's a func body.
 			break
@@ -396,29 +388,8 @@ func (f *fumpter) applyPre(c *astutil.Cursor) {
 			}
 		}
 
-		f.removeLinesBetween(bodyEnd, node.Rbrace)
-
-		if cond != nil && f.Line(cond.Pos()) != f.Line(cond.End()) {
-			// The body is preceded by a multi-line condition, so an
-			// empty line can help readability.
-			return
-		}
-		if sign != nil {
-			var lastParam *ast.Field
-			if l := sign.Results; l != nil && len(l.List) > 0 {
-				lastParam = l.List[len(l.List)-1]
-			} else if l := sign.Params; l != nil && len(l.List) > 0 {
-				lastParam = l.List[len(l.List)-1]
-			}
-			endLine := f.Line(sign.End())
-			if lastParam != nil && f.Line(sign.Pos()) != endLine && f.Line(lastParam.Pos()) == endLine {
-				// The body is preceded by a multi-line function
-				// signature, and the empty line helps readability.
-				return
-			}
-		}
-
 		f.removeLinesBetween(node.Lbrace, bodyPos)
+		f.removeLinesBetween(bodyEnd, node.Rbrace)
 
 	case *ast.CompositeLit:
 		if len(node.Elts) == 0 {
@@ -507,15 +478,6 @@ func (f *fumpter) applyPre(c *astutil.Cursor) {
 		f.stmts(node.Body)
 
 	case *ast.FieldList:
-		if node.NumFields() == 0 && f.inlineComment(node.Pos()) == nil {
-			// Empty field lists should not contain a newline.
-			// Do not join the two lines if the first has an inline
-			// comment, as that can result in broken formatting.
-			openLine := f.Line(node.Pos())
-			closeLine := f.Line(node.End())
-			f.removeLines(openLine, closeLine)
-		}
-
 		// Merging adjacent fields (e.g. parameters) is disabled by default.
 		if !f.ExtraRules {
 			break
@@ -565,19 +527,6 @@ func (f *fumpter) stmts(list []ast.Stmt) {
 func identEqual(expr ast.Expr, name string) bool {
 	id, ok := expr.(*ast.Ident)
 	return ok && id.Name == name
-}
-
-// isCgoImport returns true if the declaration is simply:
-//
-//   import "C"
-//
-// Note that parentheses do not affect the result.
-func isCgoImport(decl *ast.GenDecl) bool {
-	if decl.Tok != token.IMPORT || len(decl.Specs) != 1 {
-		return false
-	}
-	spec := decl.Specs[0].(*ast.ImportSpec)
-	return spec.Path.Value == `"C"`
 }
 
 // joinStdImports ensures that all standard library imports are together and at

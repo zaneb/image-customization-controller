@@ -8,25 +8,18 @@ import (
 	"go/types"
 	"strconv"
 	"strings"
-
-	"github.com/quasilyte/go-ruleguard/internal/xtypes"
 )
 
-//go:generate stringer -type=patternOp
 type patternOp int
 
 const (
 	opBuiltinType patternOp = iota
 	opPointer
 	opVar
-	opVarSeq
 	opSlice
 	opArray
 	opMap
 	opChan
-	opFunc
-	opStructNoSeq
-	opStruct
 	opNamed
 )
 
@@ -41,17 +34,6 @@ type pattern struct {
 	value interface{}
 	op    patternOp
 	subs  []*pattern
-}
-
-func (pat pattern) String() string {
-	if len(pat.subs) == 0 {
-		return fmt.Sprintf("<%s %#v>", pat.op, pat.value)
-	}
-	parts := make([]string, len(pat.subs))
-	for i, sub := range pat.subs {
-		parts[i] = sub.String()
-	}
-	return fmt.Sprintf("<%s %#v (%s)>", pat.op, pat.value, strings.Join(parts, ", "))
 }
 
 type ImportsTab struct {
@@ -88,14 +70,8 @@ type Context struct {
 	Itab *ImportsTab
 }
 
-const (
-	varPrefix    = `ᐸvarᐳ`
-	varSeqPrefix = `ᐸvar_seqᐳ`
-)
-
 func Parse(ctx *Context, s string) (*Pattern, error) {
-	noDollars := strings.ReplaceAll(s, "$*", varSeqPrefix)
-	noDollars = strings.ReplaceAll(noDollars, "$", varPrefix)
+	noDollars := strings.ReplaceAll(s, "$", "__")
 	n, err := parser.ParseExpr(noDollars)
 	if err != nil {
 		return nil, err
@@ -149,16 +125,9 @@ func parseExpr(ctx *Context, e ast.Expr) *pattern {
 		if ok {
 			return &pattern{op: opBuiltinType, value: basic}
 		}
-		if strings.HasPrefix(e.Name, varPrefix) {
-			name := strings.TrimPrefix(e.Name, varPrefix)
+		if strings.HasPrefix(e.Name, "__") {
+			name := strings.TrimPrefix(e.Name, "__")
 			return &pattern{op: opVar, value: name}
-		}
-		if strings.HasPrefix(e.Name, varSeqPrefix) {
-			name := strings.TrimPrefix(e.Name, varSeqPrefix)
-			// Only unnamed seq are supported right now.
-			if name == "_" {
-				return &pattern{op: opVarSeq, value: name}
-			}
 		}
 
 	case *ast.SelectorExpr:
@@ -190,8 +159,8 @@ func parseExpr(ctx *Context, e ast.Expr) *pattern {
 				subs: []*pattern{elem},
 			}
 		}
-		if id, ok := e.Len.(*ast.Ident); ok && strings.HasPrefix(id.Name, varPrefix) {
-			name := strings.TrimPrefix(id.Name, varPrefix)
+		if id, ok := e.Len.(*ast.Ident); ok && strings.HasPrefix(id.Name, "__") {
+			name := strings.TrimPrefix(id.Name, "__")
 			return &pattern{
 				op:    opArray,
 				value: name,
@@ -251,64 +220,6 @@ func parseExpr(ctx *Context, e ast.Expr) *pattern {
 	case *ast.ParenExpr:
 		return parseExpr(ctx, e.X)
 
-	case *ast.FuncType:
-		var params []*pattern
-		var results []*pattern
-		if e.Params != nil {
-			for _, field := range e.Params.List {
-				p := parseExpr(ctx, field.Type)
-				if p == nil {
-					return nil
-				}
-				if len(field.Names) != 0 {
-					return nil
-				}
-				params = append(params, p)
-			}
-		}
-		if e.Results != nil {
-			for _, field := range e.Results.List {
-				p := parseExpr(ctx, field.Type)
-				if p == nil {
-					return nil
-				}
-				if len(field.Names) != 0 {
-					return nil
-				}
-				results = append(results, p)
-			}
-		}
-		return &pattern{
-			op:    opFunc,
-			value: len(params),
-			subs:  append(params, results...),
-		}
-
-	case *ast.StructType:
-		hasSeq := false
-		members := make([]*pattern, 0, len(e.Fields.List))
-		for _, field := range e.Fields.List {
-			p := parseExpr(ctx, field.Type)
-			if p == nil {
-				return nil
-			}
-			if len(field.Names) != 0 {
-				return nil
-			}
-			if p.op == opVarSeq {
-				hasSeq = true
-			}
-			members = append(members, p)
-		}
-		op := opStructNoSeq
-		if hasSeq {
-			op = opStruct
-		}
-		return &pattern{
-			op:   op,
-			subs: members,
-		}
-
 	case *ast.InterfaceType:
 		if len(e.Methods.List) == 0 {
 			return &pattern{op: opBuiltinType, value: efaceType}
@@ -318,7 +229,6 @@ func parseExpr(ctx *Context, e ast.Expr) *pattern {
 	return nil
 }
 
-// MatchIdentical returns true if the go typ matches pattern p.
 func (p *Pattern) MatchIdentical(typ types.Type) bool {
 	p.reset()
 	return p.matchIdentical(p.root, typ)
@@ -331,54 +241,6 @@ func (p *Pattern) reset() {
 	if len(p.typeMatches) != 0 {
 		p.typeMatches = map[string]types.Type{}
 	}
-}
-
-func (p *Pattern) matchIdenticalFielder(subs []*pattern, f fielder) bool {
-	// TODO: do backtracking.
-
-	numFields := f.NumFields()
-	fieldsMatched := 0
-
-	if len(subs) == 0 && numFields != 0 {
-		return false
-	}
-
-	matchAny := false
-
-	i := 0
-	for i < len(subs) {
-		pat := subs[i]
-
-		if pat.op == opVarSeq {
-			matchAny = true
-		}
-
-		fieldsLeft := numFields - fieldsMatched
-		if matchAny {
-			switch {
-			// "Nothing left to match" stop condition.
-			case fieldsLeft == 0:
-				matchAny = false
-				i++
-			// Lookahead for non-greedy matching.
-			case i+1 < len(subs) && p.matchIdentical(subs[i+1], f.Field(fieldsMatched).Type()):
-				matchAny = false
-				i += 2
-				fieldsMatched++
-			default:
-				fieldsMatched++
-			}
-			continue
-		}
-
-		if fieldsLeft == 0 || !p.matchIdentical(pat, f.Field(fieldsMatched).Type()) {
-			return false
-		}
-		i++
-		fieldsMatched++
-	}
-
-	return numFields == fieldsMatched
 }
 
 func (p *Pattern) matchIdentical(sub *pattern, typ types.Type) bool {
@@ -396,10 +258,10 @@ func (p *Pattern) matchIdentical(sub *pattern, typ types.Type) bool {
 		if y == nil {
 			return typ == nil
 		}
-		return xtypes.Identical(typ, y)
+		return types.Identical(typ, y)
 
 	case opBuiltinType:
-		return xtypes.Identical(typ, sub.value.(types.Type))
+		return types.Identical(typ, sub.value.(types.Type))
 
 	case opPointer:
 		typ, ok := typ.(*types.Pointer)
@@ -470,67 +332,9 @@ func (p *Pattern) matchIdentical(sub *pattern, typ types.Type) bool {
 		}
 		pkgPath := sub.value.([2]string)[0]
 		typeName := sub.value.([2]string)[1]
-		// obj.Pkg().Path() may be in a vendor directory.
-		path := strings.SplitAfter(obj.Pkg().Path(), "/vendor/")
-		return path[len(path)-1] == pkgPath && typeName == obj.Name()
-
-	case opFunc:
-		typ, ok := typ.(*types.Signature)
-		if !ok {
-			return false
-		}
-		numParams := sub.value.(int)
-		params := sub.subs[:numParams]
-		results := sub.subs[numParams:]
-		if typ.Params().Len() != len(params) {
-			return false
-		}
-		if typ.Results().Len() != len(results) {
-			return false
-		}
-		for i := 0; i < typ.Params().Len(); i++ {
-			if !p.matchIdentical(params[i], typ.Params().At(i).Type()) {
-				return false
-			}
-		}
-		for i := 0; i < typ.Results().Len(); i++ {
-			if !p.matchIdentical(results[i], typ.Results().At(i).Type()) {
-				return false
-			}
-		}
-		return true
-
-	case opStructNoSeq:
-		typ, ok := typ.(*types.Struct)
-		if !ok {
-			return false
-		}
-		if typ.NumFields() != len(sub.subs) {
-			return false
-		}
-		for i, member := range sub.subs {
-			if !p.matchIdentical(member, typ.Field(i).Type()) {
-				return false
-			}
-		}
-		return true
-
-	case opStruct:
-		typ, ok := typ.(*types.Struct)
-		if !ok {
-			return false
-		}
-		if !p.matchIdenticalFielder(sub.subs, typ) {
-			return false
-		}
-		return true
+		return obj.Pkg().Path() == pkgPath && typeName == obj.Name()
 
 	default:
 		return false
 	}
-}
-
-type fielder interface {
-	Field(i int) *types.Var
-	NumFields() int
 }

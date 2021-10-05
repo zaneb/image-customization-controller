@@ -168,6 +168,7 @@ func GetCallInfo(n ast.Node, ctx *Context) (string, string, error) {
 							}
 						}
 					}
+
 				}
 			}
 		case *ast.Ident:
@@ -219,6 +220,7 @@ func GetIdentStringValues(ident *ast.Ident) []string {
 				}
 			}
 		}
+
 	}
 	return values
 }
@@ -296,7 +298,7 @@ func Gopath() []string {
 }
 
 // Getenv returns the values of the environment variable, otherwise
-// returns the default if variable is not set
+//returns the default if variable is not set
 func Getenv(key, userDefault string) string {
 	if val := os.Getenv(key); val != "" {
 		return val
@@ -446,6 +448,8 @@ func ExcludedDirsRegExp(excludedDirs []string) []*regexp.Regexp {
 
 // RootPath returns the absolute root path of a scan
 func RootPath(root string) (string, error) {
-	root = strings.TrimSuffix(root, "...")
+	if strings.HasSuffix(root, "...") {
+		root = root[0 : len(root)-3]
+	}
 	return filepath.Abs(root)
 }

@@ -1,42 +1,49 @@
 current_dir = $(shell pwd)
+version = $(shell printf '%s' $$(cat VERSION))
 
-.PHONY: lint
+.PHONEY: lint
 lint:
 	golangci-lint run ./...
 
-.PHONY: build
+.PHONEY: build
 build:
 	go build -o gomodguard cmd/gomodguard/main.go
 
-.PHONY: run
+.PHONEY: dockerbuild
+dockerbuild:
+	docker build --build-arg GOMODGUARD_VERSION=${version} --tag ryancurrah/gomodguard:${version} .
+ 
+.PHONEY: run
 run: build
 	./gomodguard
 
-.PHONY: test
+.PHONEY: test
 test:
 	go test -v -coverprofile coverage.out 
 
-.PHONY: cover
+.PHONEY: cover
 cover:
 	gocover-cobertura < coverage.out > coverage.xml
 
-.PHONY: dockerrun
+.PHONEY: dockerrun
 dockerrun: dockerbuild
 	docker run -v "${current_dir}/.gomodguard.yaml:/.gomodguard.yaml" ryancurrah/gomodguard:latest
 
-.PHONY: release
+.PHONEY: release
 release:
-	goreleaser --rm-dist
+	git tag ${version}
+	git push --tags
+	goreleaser --skip-validate --rm-dist
 
-.PHONY: clean
+.PHONEY: clean
 clean:
 	rm -rf dist/
 	rm -f gomodguard coverage.xml coverage.out
 
-.PHONY: install-tools-mac
+.PHONEY: install-tools-mac
 install-tools-mac:
 	brew install goreleaser/tap/goreleaser
 
-.PHONY: install-go-tools
+.PHONEY: install-go-tools
 install-go-tools:
 	go get github.com/t-yuki/gocover-cobertura

@@ -13,7 +13,7 @@ type github struct {
 
 const defaultGithubSeverity = "error"
 
-// NewGithub output format outputs issues according to Github actions format:
+// Github output format outputs issues according to Github actions format:
 // https://help.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-an-error-message
 func NewGithub() Printer {
 	return &github{}
