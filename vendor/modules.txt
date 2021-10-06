@@ -27,6 +27,7 @@ github.com/coreos/ignition/v2/config/shared/validations
 github.com/coreos/ignition/v2/config/util
 github.com/coreos/ignition/v2/config/v3_2/types
 # github.com/coreos/vcontext v0.0.0-20210407161507-4ee6c745c8bd
+## explicit
 github.com/coreos/vcontext/path
 github.com/coreos/vcontext/report
 github.com/coreos/vcontext/tree
@@ -262,7 +263,7 @@ github.com/nbutton23/zxcvbn-go/scoring
 github.com/nbutton23/zxcvbn-go/utils/math
 # github.com/nishanths/exhaustive v0.1.0
 github.com/nishanths/exhaustive
-# github.com/openshift/assisted-image-service v0.0.0-20210825003515-8675374a2fc2
+# github.com/openshift/assisted-image-service v0.0.0-20211005202205-cf04daf26936
 ## explicit
 github.com/openshift/assisted-image-service/pkg/isoeditor
 github.com/openshift/assisted-image-service/pkg/overlay
@@ -274,6 +275,7 @@ github.com/phayes/checkstyle
 github.com/pierrec/lz4
 github.com/pierrec/lz4/internal/xxh32
 # github.com/pkg/errors v0.9.1
+## explicit
 github.com/pkg/errors
 # github.com/pkg/xattr v0.4.1
 github.com/pkg/xattr
