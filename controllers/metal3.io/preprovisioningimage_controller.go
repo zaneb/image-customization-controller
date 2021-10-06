@@ -112,7 +112,7 @@ func (r *PreprovisioningImageReconciler) reconcile(ctx context.Context, img *met
 	}
 
 	format := metal3.ImageFormatISO
-	imageName := img.Name + ".qcow"
+	imageName := img.Name + "." + string(format)
 
 	url, err := r.ImageHandler.ServeImage(imageName, ignitionConfig)
 	if err != nil {

@@ -137,7 +137,7 @@ func loadStaticNMState(nmstateDir string, imageServer imagehandler.ImageHandler)
 		if err != nil {
 			return errors.WithMessagef(err, "problem generating ignition %s", f.Name())
 		}
-		imageName := strings.Replace(f.Name(), ".yaml", ".qcow", 1) // master-1.yaml -> master-1.qcow
+		imageName := strings.Replace(f.Name(), ".yaml", ".iso", 1) // master-1.yaml -> master-1.iso
 		url, err := imageServer.ServeImage(imageName, ign)
 		if err != nil {
 			return err
