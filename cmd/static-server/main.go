@@ -15,6 +15,7 @@ limitations under the License.
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"io/ioutil"
 	"net/http"
@@ -28,24 +29,40 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	"github.com/openshift/image-customization-controller/pkg/env"
 	"github.com/openshift/image-customization-controller/pkg/ignition"
 	"github.com/openshift/image-customization-controller/pkg/imagehandler"
 	"github.com/openshift/image-customization-controller/pkg/version"
 	// +kubebuilder:scaffold:imports
 )
 
+const jsonImageMappingFileName = "images.json"
+
 var (
-	setupLog = ctrl.Log.WithName("setup")
+	log = ctrl.Log.WithName("static-server")
 )
 
-func loadStaticNMState(nmstateDir string, imageServer imagehandler.ImageHandler) error {
+func loadStaticNMState(env *env.EnvInputs, nmstateDir string, imageServer imagehandler.ImageHandler) error {
+	imageMapping := map[string]string{}
+	imageMappingFile := path.Join(nmstateDir, jsonImageMappingFileName)
+
+	b, err := os.ReadFile(imageMappingFile)
+	if err != nil {
+		log.Info("problem reading %s : %w", imageMappingFile, err)
+	} else {
+		err = json.Unmarshal(b, &imageMapping)
+		if err != nil {
+			return errors.WithMessagef(err, "problem parsing %s", imageMappingFile)
+		}
+	}
+
 	files, err := ioutil.ReadDir(nmstateDir)
 	if err != nil {
 		return errors.WithMessagef(err, "problem reading %s", nmstateDir)
 	}
 
 	for _, f := range files {
-		if f.IsDir() {
+		if f.IsDir() || f.Name() == jsonImageMappingFileName {
 			continue
 		}
 		b, err := os.ReadFile(path.Join(nmstateDir, f.Name()))
@@ -53,21 +70,27 @@ func loadStaticNMState(nmstateDir string, imageServer imagehandler.ImageHandler)
 			return errors.WithMessagef(err, "problem reading %s", path.Join(nmstateDir, f.Name()))
 		}
 		igBuilder := ignition.New(b,
-			os.Getenv("IRONIC_BASE_URL"),
-			os.Getenv("IRONIC_AGENT_IMAGE"),
-			os.Getenv("IRONIC_AGENT_PULL_SECRET"),
-			os.Getenv("IRONIC_RAMDISK_SSH_KEY"),
+			env.IronicBaseURL,
+			env.IronicAgentImage,
+			env.IronicAgentPullSecret,
+			env.IronicRAMDiskSSHKey,
 		)
 		ign, err := igBuilder.Generate()
 		if err != nil {
 			return errors.WithMessagef(err, "problem generating ignition %s", f.Name())
 		}
-		imageName := strings.Replace(f.Name(), ".yaml", ".iso", 1) // master-1.yaml -> master-1.iso
+
+		imageName, ok := imageMapping[f.Name()]
+		if !ok {
+			imageName = strings.Replace(f.Name(), ".yaml", ".iso", 1) // master-1.yaml -> master-1.iso
+			log.Info("image mapping not available, using image", "name", imageName)
+		}
+
 		url, err := imageServer.ServeImage(imageName, ign)
 		if err != nil {
 			return err
 		}
-		setupLog.Info("serving", "image", imageName, "url", url)
+		log.Info("serving", "image", imageName, "url", url)
 	}
 	return nil
 }
@@ -88,33 +111,35 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(devLogging)))
 
-	version.Print(setupLog)
+	version.Print(log)
 
-	for _, env := range []string{"IRONIC_BASE_URL", "DEPLOY_ISO"} {
-		val := os.Getenv(env)
-		if val == "" {
-			setupLog.Info("Missing environment", "variable", env)
-			os.Exit(1)
-		}
-	}
-
-	_, err := url.Parse(imagesPublishAddr)
+	env, err := env.New()
 	if err != nil {
-		setupLog.Error(err, "imagesPublishAddr is not parsable")
+		log.Error(err, "environment not provided")
 		os.Exit(1)
 	}
 
-	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), os.Getenv("DEPLOY_ISO"), imagesPublishAddr)
+	_, err = url.Parse(imagesPublishAddr)
+	if err != nil {
+		log.Error(err, "imagesPublishAddr is not parsable")
+		os.Exit(1)
+	}
+
+	if nmstateDir == "" {
+		log.Info("no nmstate-dir provided")
+		os.Exit(1)
+	}
+
+	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), env.DeployISO, imagesPublishAddr)
 	http.Handle("/", http.FileServer(imageServer.FileSystem()))
 
-	if nmstateDir != "" {
-		if err := loadStaticNMState(nmstateDir, imageServer); err != nil {
-			setupLog.Error(err, "problem loading static ignitions")
-			os.Exit(1)
-		}
+	if err := loadStaticNMState(env, nmstateDir, imageServer); err != nil {
+		log.Error(err, "problem loading static ignitions")
+		os.Exit(1)
 	}
+
 	if err := http.ListenAndServe(imagesBindAddr, nil); err != nil {
-		setupLog.Error(err, "problem serving images")
+		log.Error(err, "problem serving images")
 		os.Exit(1)
 	}
 }

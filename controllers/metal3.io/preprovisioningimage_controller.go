@@ -17,7 +17,6 @@ package controllers
 import (
 	"context"
 	"errors"
-	"os"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -32,6 +31,7 @@ import (
 
 	metal3 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/metal3-io/baremetal-operator/pkg/secretutils"
+	"github.com/openshift/image-customization-controller/pkg/env"
 	"github.com/openshift/image-customization-controller/pkg/ignition"
 	"github.com/openshift/image-customization-controller/pkg/imagehandler"
 )
@@ -48,6 +48,7 @@ type PreprovisioningImageReconciler struct {
 	Scheme       *runtime.Scheme
 	APIReader    client.Reader
 	ImageHandler imagehandler.ImageHandler
+	EnvInputs    *env.EnvInputs
 }
 
 type conditionReason string
@@ -106,7 +107,7 @@ func (r *PreprovisioningImageReconciler) reconcile(ctx context.Context, img *met
 		return setError(ctx, generation, &img.Status, reasonUnexpectedError, err.Error()), err
 	}
 
-	ignitionConfig, err := buildIgnitionConfig(secret)
+	ignitionConfig, err := r.buildIgnitionConfig(secret)
 	if err != nil {
 		return setError(ctx, generation, &img.Status, reasonConfigurationError, err.Error()), err
 	}
@@ -144,7 +145,7 @@ func errorRetryDelay(status metal3.PreprovisioningImageStatus) time.Duration {
 	return delay
 }
 
-func buildIgnitionConfig(secret *corev1.Secret) ([]byte, error) {
+func (r *PreprovisioningImageReconciler) buildIgnitionConfig(secret *corev1.Secret) ([]byte, error) {
 	if secret == nil {
 		return nil, nil
 	}
@@ -154,10 +155,10 @@ func buildIgnitionConfig(secret *corev1.Secret) ([]byte, error) {
 	}
 
 	builder := ignition.New(nmstate,
-		os.Getenv("IRONIC_BASE_URL"),
-		os.Getenv("IRONIC_AGENT_IMAGE"),
-		os.Getenv("IRONIC_AGENT_PULL_SECRET"),
-		os.Getenv("IRONIC_RAMDISK_SSH_KEY"),
+		r.EnvInputs.IronicBaseURL,
+		r.EnvInputs.IronicAgentImage,
+		r.EnvInputs.IronicAgentPullSecret,
+		r.EnvInputs.IronicRAMDiskSSHKey,
 	)
 
 	return builder.Generate()

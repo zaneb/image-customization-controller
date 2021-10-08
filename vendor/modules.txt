@@ -213,6 +213,9 @@ github.com/jingyugao/rowserrcheck/passes/rowserr
 github.com/jirfag/go-printf-func-name/pkg/analyzer
 # github.com/json-iterator/go v1.1.11
 github.com/json-iterator/go
+# github.com/kelseyhightower/envconfig v1.4.0
+## explicit
+github.com/kelseyhightower/envconfig
 # github.com/kisielk/gotool v1.0.0
 github.com/kisielk/gotool
 github.com/kisielk/gotool/internal/load
@@ -235,7 +238,6 @@ github.com/mbilski/exhaustivestruct/pkg/analyzer
 # github.com/metal3-io/baremetal-operator v0.0.0-00010101000000-000000000000 => github.com/zaneb/baremetal-operator v0.0.0-20211008015317-827af144e720
 ## explicit
 github.com/metal3-io/baremetal-operator/pkg/secretutils
-github.com/metal3-io/baremetal-operator/pkg/version
 # github.com/metal3-io/baremetal-operator/apis v0.0.0 => github.com/zaneb/baremetal-operator/apis v0.0.0-20211008015317-827af144e720
 ## explicit
 github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1
