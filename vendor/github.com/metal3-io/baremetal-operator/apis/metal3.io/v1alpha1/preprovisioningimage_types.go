@@ -64,14 +64,6 @@ type PreprovisioningImageStatus struct {
 	// +optional
 	Format ImageFormat `json:"format,omitempty"`
 
-	// checksum is the image checksum.
-	// +optional
-	Checksum string `json:"checksum,omitempty"`
-
-	// checksumType is the algorithm used to calculate the checksum.
-	// +optional
-	ChecksumType ChecksumType `json:"checksumType,omitempty"`
-
 	// networkData is a reference to the version of the Secret containing the
 	// network data used to build the image.
 	// +optional
@@ -91,6 +83,8 @@ type PreprovisioningImageStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:shortName=ppimg
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status",description="Whether the image is ready"
+// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].reason",description="The reason for the image readiness status"
 // +kubebuilder:subresource:status
 
 // PreprovisioningImage is the Schema for the preprovisioningimages API

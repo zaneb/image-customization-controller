@@ -60,7 +60,7 @@ func (f *imageFileSystem) Open(name string) (http.File, error) {
 	}
 	if im.rhcosStreamReader == nil {
 		var err error
-		im.rhcosStreamReader, err = isoeditor.NewRHCOSStreamReader(f.isoFile, im.ignitionContent, nil)
+		im.rhcosStreamReader, err = isoeditor.NewRHCOSStreamReader(f.isoFile, &isoeditor.IgnitionContent{Config: im.ignitionContent}, nil)
 		if err != nil {
 			f.log.Error(err, "creating isoeditor.NewRHCOSStreamReader")
 			return nil, err
