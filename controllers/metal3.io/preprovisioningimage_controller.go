@@ -182,8 +182,6 @@ func setImage(generation int64, status *metal3.PreprovisioningImageStatus, url s
 	newStatus := status.DeepCopy()
 	newStatus.ImageUrl = url
 	newStatus.Format = format
-	newStatus.Checksum = ""
-	newStatus.ChecksumType = ""
 	newStatus.Architecture = arch
 	newStatus.NetworkData = networkData
 
@@ -214,8 +212,6 @@ func setError(ctx context.Context, generation int64, status *metal3.Preprovision
 
 	newStatus := status.DeepCopy()
 	newStatus.ImageUrl = ""
-	newStatus.Checksum = ""
-	newStatus.ChecksumType = ""
 
 	log.Info("error condition", "reason", reason, "message", message)
 
