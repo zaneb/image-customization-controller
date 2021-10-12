@@ -18,26 +18,24 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
-	"runtime"
 
+	corev1 "k8s.io/api/core/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	metal3iov1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	"github.com/metal3-io/baremetal-operator/pkg/secretutils"
-	"github.com/metal3-io/baremetal-operator/pkg/version"
 	metal3iocontroller "github.com/openshift/image-customization-controller/controllers/metal3.io"
+	"github.com/openshift/image-customization-controller/pkg/env"
 	"github.com/openshift/image-customization-controller/pkg/imagehandler"
+	"github.com/openshift/image-customization-controller/pkg/version"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -53,24 +51,52 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
-func printVersion() {
-	setupLog.Info(fmt.Sprintf("Go Version: %s", runtime.Version()))
-	setupLog.Info(fmt.Sprintf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH))
-	setupLog.Info(fmt.Sprintf("Git commit: %s", version.Commit))
-	setupLog.Info(fmt.Sprintf("Build time: %s", version.BuildTime))
-	setupLog.Info(fmt.Sprintf("Component: %s", version.String))
-}
-
-func setupChecks(mgr ctrl.Manager) {
+func setupChecks(mgr ctrl.Manager) error {
 	if err := mgr.AddReadyzCheck("ping", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to create ready check")
-		os.Exit(1)
+		return err
 	}
 
 	if err := mgr.AddHealthzCheck("ping", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to create health check")
-		os.Exit(1)
+		return err
 	}
+	return nil
+}
+
+func runController(watchNamespace string, imageServer imagehandler.ImageHandler, envInputs *env.EnvInputs) error {
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+		Scheme:                scheme,
+		Port:                  0, // Add flag with default of 9443 when adding webhooks
+		Namespace:             watchNamespace,
+		ClientDisableCacheFor: []client.Object{&corev1.Secret{}},
+	})
+	if err != nil {
+		setupLog.Error(err, "unable to start manager")
+		return err
+	}
+
+	imgReconciler := metal3iocontroller.PreprovisioningImageReconciler{
+		Client:       mgr.GetClient(),
+		Log:          ctrl.Log.WithName("controllers").WithName("PreprovisioningImage"),
+		APIReader:    mgr.GetAPIReader(),
+		Scheme:       mgr.GetScheme(),
+		ImageHandler: imageServer,
+		EnvInputs:    envInputs,
+	}
+	if err = (&imgReconciler).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PreprovisioningImage")
+		return err
+	}
+
+	// +kubebuilder:scaffold:builder
+
+	if err := setupChecks(mgr); err != nil {
+		return err
+	}
+
+	setupLog.Info("starting manager")
+	return mgr.Start(ctrl.SetupSignalHandler())
 }
 
 func main() {
@@ -84,7 +110,7 @@ func main() {
 	// is for multi-tenancy, then the BMO should watch only the provided
 	// namespace.
 	flag.StringVar(&watchNamespace, "namespace", os.Getenv("WATCH_NAMESPACE"),
-		"Namespace that the controller watches to reconcile host resources.")
+		"Namespace that the controller watches to reconcile preprovisioningimage resources.")
 	flag.StringVar(&imagesBindAddr, "images-bind-addr", ":8084",
 		"The address the images endpoint binds to.")
 	flag.StringVar(&imagesPublishAddr, "images-publish-addr", "http://127.0.0.1:8084",
@@ -93,63 +119,32 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(devLogging)))
 
-	printVersion()
+	version.Print(setupLog)
 
-	for _, env := range []string{"IRONIC_BASE_URL", "DEPLOY_ISO"} {
-		val := os.Getenv(env)
-		if val == "" {
-			setupLog.Info("Missing environment", "variable", env)
-			os.Exit(1)
-		}
+	envInputs, err := env.New()
+	if err != nil {
+		setupLog.Error(err, "environment not provided")
+		os.Exit(1)
 	}
 
-	_, err := url.Parse(imagesPublishAddr)
+	_, err = url.Parse(imagesPublishAddr)
 	if err != nil {
 		setupLog.Error(err, "imagesPublishAddr is not parsable")
 		os.Exit(1)
 	}
 
-	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), os.Getenv("DEPLOY_ISO"), imagesPublishAddr)
-	// why use a FileServer?
-	// 1. it streams files efficiently
-	// 2. if we cache these images, then that will be an easy change.
+	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), envInputs.DeployISO, imagesPublishAddr)
 	http.Handle("/", http.FileServer(imageServer.FileSystem()))
+
 	go func() {
-		log.Fatal(http.ListenAndServe(imagesBindAddr, nil))
+		if err := http.ListenAndServe(imagesBindAddr, nil); err != nil {
+			setupLog.Error(err, "")
+			os.Exit(1)
+		}
 	}()
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:    scheme,
-		Port:      0, // Add flag with default of 9443 when adding webhooks
-		Namespace: watchNamespace,
-		NewCache: cache.BuilderWithOptions(cache.Options{
-			SelectorsByObject: secretutils.AddSecretSelector(nil),
-		}),
-	})
-	if err != nil {
-		setupLog.Error(err, "unable to start manager")
-		os.Exit(1)
-	}
-
-	imgReconciler := metal3iocontroller.PreprovisioningImageReconciler{
-		Client:       mgr.GetClient(),
-		Log:          ctrl.Log.WithName("controllers").WithName("PreprovisioningImage"),
-		APIReader:    mgr.GetAPIReader(),
-		Scheme:       mgr.GetScheme(),
-		ImageHandler: imageServer,
-	}
-	if err = (&imgReconciler).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PreprovisioningImage")
-		os.Exit(1)
-	}
-
-	// +kubebuilder:scaffold:builder
-
-	setupChecks(mgr)
-
-	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		setupLog.Error(err, "problem running manager")
+	if err := runController(watchNamespace, imageServer, envInputs); err != nil {
+		setupLog.Error(err, "problem running controller")
 		os.Exit(1)
 	}
 }

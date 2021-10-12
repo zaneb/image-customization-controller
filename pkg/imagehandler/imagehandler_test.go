@@ -24,7 +24,7 @@ import (
 )
 
 func TestImageHandler(t *testing.T) {
-	req, err := http.NewRequest("GET", "/host-xyz-45.qcow", nil)
+	req, err := http.NewRequest("GET", "/host-xyz-45.iso", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestImageHandler(t *testing.T) {
 		baseURL:     "http://localhost:8080",
 		images: []*imageFile{
 			{
-				name:              "host-xyz-45.qcow",
+				name:              "host-xyz-45.iso",
 				size:              12345,
 				ignitionContent:   []byte("asietonarst"),
 				rhcosStreamReader: strings.NewReader("aiosetnarsetin"),

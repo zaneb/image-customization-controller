@@ -55,18 +55,18 @@ status:
     status: "False"
     type: Error
   format: iso
-  imageUrl: http://localhost:8083/host-it-34.qcow
+  imageUrl: http://localhost:8083/host-it-34.iso
   networkData:
     name: mysecret
     version: "6349423"
 
 
-curl http://localhost:8083/host-it-34.qcow --output host-it-34.qcow
+curl http://localhost:8083/host-it-34.iso --output host-it-34.iso
   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
                                  Dload  Upload   Total   Spent    Left  Speed
  93 1058M   93  985M    0     0   738M      0  0:00:01  0:00:01 --:--:--  737M
 curl: (18) transfer closed with 76677120 bytes remaining to read
 
-ls -la host-it-34.qcow
--rw-rw-r--. 1 angus angus 1032847360 Aug 25 00:49 host-it-34.qcow
+ls -la host-it-34.iso
+-rw-rw-r--. 1 angus angus 1032847360 Aug 25 00:49 host-it-34.iso
 ```
