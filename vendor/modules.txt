@@ -14,6 +14,8 @@ github.com/OpenPeeDeeP/depguard
 github.com/beorn7/perks/quantile
 # github.com/bombsimon/wsl/v3 v3.1.0
 github.com/bombsimon/wsl/v3
+# github.com/cavaliercoder/go-cpio v0.0.0-20180626203310-925f9528c45e
+github.com/cavaliercoder/go-cpio
 # github.com/cespare/xxhash/v2 v2.1.1
 github.com/cespare/xxhash/v2
 # github.com/coreos/go-semver v0.3.0
@@ -263,7 +265,7 @@ github.com/nbutton23/zxcvbn-go/scoring
 github.com/nbutton23/zxcvbn-go/utils/math
 # github.com/nishanths/exhaustive v0.1.0
 github.com/nishanths/exhaustive
-# github.com/openshift/assisted-image-service v0.0.0-20211005202205-cf04daf26936
+# github.com/openshift/assisted-image-service v0.0.0-20211012141310-4010348b8e14
 ## explicit
 github.com/openshift/assisted-image-service/pkg/isoeditor
 github.com/openshift/assisted-image-service/pkg/overlay

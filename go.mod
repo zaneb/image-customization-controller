@@ -10,7 +10,7 @@ require (
 	github.com/google/go-cmp v0.5.5
 	github.com/metal3-io/baremetal-operator v0.0.0-00010101000000-000000000000
 	github.com/metal3-io/baremetal-operator/apis v0.0.0
-	github.com/openshift/assisted-image-service v0.0.0-20211005202205-cf04daf26936
+	github.com/openshift/assisted-image-service v0.0.0-20211012141310-4010348b8e14
 	github.com/pkg/errors v0.9.1 // indirect
 	k8s.io/api v0.22.1
 	k8s.io/apimachinery v0.22.1
