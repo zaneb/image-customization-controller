@@ -685,10 +685,11 @@ github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9de
 github.com/yuin/goldmark v1.1.32/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
-github.com/zaneb/baremetal-operator v0.0.0-20211008015317-827af144e720 h1:LKXEVv8inpsve/HPNJ74B2Sc4TLJc6ROTAqaPi8bIvM=
-github.com/zaneb/baremetal-operator v0.0.0-20211008015317-827af144e720/go.mod h1:Es3v08d+g8dIE34dQCpboxiqRW5BJHScGjugePGLpI0=
-github.com/zaneb/baremetal-operator/apis v0.0.0-20211008015317-827af144e720 h1:5YhksMOdJK1SLjZMJPWZsqfe+hdqhwRNWyLOFA/V/w4=
-github.com/zaneb/baremetal-operator/apis v0.0.0-20211008015317-827af144e720/go.mod h1:/pror7LknTgduckyCOm/EhnjFKIZy3mXQHr2GdaQ3kQ=
+github.com/zaneb/baremetal-operator v0.0.0-20211013135839-5a58f0bb84da h1:jUmcOjGuYVYAbZoM1LX+KydwIIGilIU/gh0CIVC+IOc=
+github.com/zaneb/baremetal-operator v0.0.0-20211013135839-5a58f0bb84da/go.mod h1:CoZVVmLfuUBMW1fRTUMTjNiOnMw+TJlMi80hZqblam4=
+github.com/zaneb/baremetal-operator/apis v0.0.0-20211013135839-5a58f0bb84da h1:A26iBx0iAmuPS2p5a9FVRBw/Uk9IfhZkuLLoGFYSZbM=
+github.com/zaneb/baremetal-operator/apis v0.0.0-20211013135839-5a58f0bb84da/go.mod h1:/pror7LknTgduckyCOm/EhnjFKIZy3mXQHr2GdaQ3kQ=
+github.com/zaneb/baremetal-operator/pkg/ironic v0.0.0-20211013135839-5a58f0bb84da/go.mod h1:3B59uad81cSv2wcVevvG8aBkww2HcGIMuPKBZxq5jfc=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.etcd.io/bbolt v1.3.3/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.etcd.io/bbolt v1.3.5/go.mod h1:G5EMThwa9y8QZGBClrRx5EY+Yw9kAhnjy3bSjsnlVTQ=

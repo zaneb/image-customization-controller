@@ -22,6 +22,7 @@ require (
 )
 
 replace (
-	github.com/metal3-io/baremetal-operator => github.com/zaneb/baremetal-operator v0.0.0-20211008015317-827af144e720
-	github.com/metal3-io/baremetal-operator/apis => github.com/zaneb/baremetal-operator/apis v0.0.0-20211008015317-827af144e720
+	github.com/metal3-io/baremetal-operator => github.com/zaneb/baremetal-operator v0.0.0-20211013135839-5a58f0bb84da
+	github.com/metal3-io/baremetal-operator/apis => github.com/zaneb/baremetal-operator/apis v0.0.0-20211013135839-5a58f0bb84da
+	github.com/metal3-io/baremetal-operator/ironic => github.com/zaneb/baremetal-operator/pkg/ironic v0.0.0-20211013135839-5a58f0bb84da
 )
