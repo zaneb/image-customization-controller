@@ -235,10 +235,10 @@ github.com/mattn/go-isatty
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/mbilski/exhaustivestruct v1.0.1
 github.com/mbilski/exhaustivestruct/pkg/analyzer
-# github.com/metal3-io/baremetal-operator v0.0.0-00010101000000-000000000000 => github.com/zaneb/baremetal-operator v0.0.0-20211008015317-827af144e720
+# github.com/metal3-io/baremetal-operator v0.0.0-00010101000000-000000000000 => github.com/zaneb/baremetal-operator v0.0.0-20211013135839-5a58f0bb84da
 ## explicit
 github.com/metal3-io/baremetal-operator/pkg/secretutils
-# github.com/metal3-io/baremetal-operator/apis v0.0.0 => github.com/zaneb/baremetal-operator/apis v0.0.0-20211008015317-827af144e720
+# github.com/metal3-io/baremetal-operator/apis v0.0.0 => github.com/zaneb/baremetal-operator/apis v0.0.0-20211013135839-5a58f0bb84da
 ## explicit
 github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1
 # github.com/mitchellh/go-homedir v1.1.0
@@ -860,5 +860,6 @@ sigs.k8s.io/structured-merge-diff/v4/value
 # sigs.k8s.io/yaml v1.2.0
 ## explicit
 sigs.k8s.io/yaml
-# github.com/metal3-io/baremetal-operator => github.com/zaneb/baremetal-operator v0.0.0-20211008015317-827af144e720
-# github.com/metal3-io/baremetal-operator/apis => github.com/zaneb/baremetal-operator/apis v0.0.0-20211008015317-827af144e720
+# github.com/metal3-io/baremetal-operator => github.com/zaneb/baremetal-operator v0.0.0-20211013135839-5a58f0bb84da
+# github.com/metal3-io/baremetal-operator/apis => github.com/zaneb/baremetal-operator/apis v0.0.0-20211013135839-5a58f0bb84da
+# github.com/metal3-io/baremetal-operator/ironic => github.com/zaneb/baremetal-operator/pkg/ironic v0.0.0-20211013135839-5a58f0bb84da
