@@ -33,7 +33,7 @@ func TestIronicPythonAgentConf(t *testing.T) {
 				ironicBaseURL: tt.ironicBaseURL,
 			}
 			if got := b.ironicPythonAgentConf(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf(cmp.Diff(tt.want, got))
+				t.Error(cmp.Diff(tt.want, got))
 			}
 		})
 	}
@@ -63,7 +63,7 @@ func TestIronicAgentService(t *testing.T) {
 				ironicAgentPullSecret: tt.ironicAgentPullSecret,
 			}
 			if got := b.ironicAgentService(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf(cmp.Diff(tt.want, got))
+				t.Error(cmp.Diff(tt.want, got))
 			}
 		})
 	}

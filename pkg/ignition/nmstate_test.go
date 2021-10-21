@@ -138,7 +138,7 @@ NetworkManager:
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf(cmp.Diff(tt.want, got))
+				t.Error(cmp.Diff(tt.want, got))
 			}
 		})
 	}
