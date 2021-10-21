@@ -1,7 +1,6 @@
 package ignition
 
 import (
-	"net/url"
 	"reflect"
 	"testing"
 
@@ -24,17 +23,7 @@ func TestIronicPythonAgentConf(t *testing.T) {
 				Node: ignition_config_types_32.Node{Path: "/etc/ironic-python-agent.conf"},
 				FileEmbedded1: ignition_config_types_32.FileEmbedded1{
 					Contents: ignition_config_types_32.Resource{
-						Source: pointer.StringPtr("data:," + url.QueryEscape(`
-[DEFAULT]
-api_url = http://example.com/foo:6385
-inspection_callback_url = http://example.com/foo:5050/v1/continue
-insecure = True
-
-collect_lldp = True
-enable_vlan_interfaces = all
-inspection_collectors = default,extra-hardware,logs
-inspection_dhcp_all_interfaces = True
-`))}},
+						Source: pointer.StringPtr("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2Fexample.com%2Ffoo%3A6385%0Ainspection_callback_url%20%3D%20http%3A%2F%2Fexample.com%2Ffoo%3A5050%2Fv1%2Fcontinue%0Ainsecure%20%3D%20True%0A%0Acollect_lldp%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20all%0Ainspection_collectors%20%3D%20default%2Cextra-hardware%2Clogs%0Ainspection_dhcp_all_interfaces%20%3D%20True%0A")}},
 			},
 		},
 	}
@@ -44,7 +33,7 @@ inspection_dhcp_all_interfaces = True
 				ironicBaseURL: tt.ironicBaseURL,
 			}
 			if got := b.ironicPythonAgentConf(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf(cmp.Diff(tt.want, got))
+				t.Error(cmp.Diff(tt.want, got))
 			}
 		})
 	}
@@ -64,7 +53,7 @@ func TestIronicAgentService(t *testing.T) {
 			want: ignition_config_types_32.Unit{
 				Name:     "ironic-agent.service",
 				Enabled:  pointer.BoolPtr(true),
-				Contents: pointer.StringPtr("data:;base64,[Unit]\\nDescription=Ironic Agent\\nAfter=network-online.target\\nWants=network-online.target\\n[Service]\\nTimeoutStartSec=0\\nExecStartPre=/bin/podman pull http://example.com/foo:latest --tls-verify=false --authfile=/etc/authfile.json\\nExecStart=/bin/podman run --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/,dst=/mnt/coreos --name ironic-agent http://example.com/foo:latest\\n[Install]\\nWantedBy=multi-user.target"),
+				Contents: pointer.StringPtr("[Unit]\nDescription=Ironic Agent\nAfter=network-online.target\nWants=network-online.target\n[Service]\nTimeoutStartSec=0\nExecStartPre=/bin/podman pull http://example.com/foo:latest --tls-verify=false --authfile=/etc/authfile.json\nExecStart=/bin/podman run --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/,dst=/mnt/coreos --name ironic-agent http://example.com/foo:latest\n[Install]\nWantedBy=multi-user.target\n"),
 			},
 		}}
 	for _, tt := range tests {
@@ -74,7 +63,7 @@ func TestIronicAgentService(t *testing.T) {
 				ironicAgentPullSecret: tt.ironicAgentPullSecret,
 			}
 			if got := b.ironicAgentService(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf(cmp.Diff(tt.want, got))
+				t.Error(cmp.Diff(tt.want, got))
 			}
 		})
 	}

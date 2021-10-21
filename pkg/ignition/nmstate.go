@@ -21,12 +21,9 @@ func nmstateOutputToFiles(generatedConfig []byte) ([]ignition_config_types_32.Fi
 		return files, nil
 	}
 	for _, v := range networkManagerConfig.NetworkManager {
-		name := v[0]
-		source := "data:," + v[1]
-		files = append(files, ignition_config_types_32.File{
-			Node:          ignition_config_types_32.Node{Path: "/etc/NetworkManager/system-connections/" + name},
-			FileEmbedded1: ignition_config_types_32.FileEmbedded1{Contents: ignition_config_types_32.Resource{Source: &source}},
-		})
+		files = append(files,
+			ignitionFileEmbed("/etc/NetworkManager/system-connections/"+v[0],
+				[]byte(v[1])))
 	}
 	return files, nil
 }
