@@ -10,6 +10,7 @@ import (
 )
 
 func TestNMStateOutputToFiles(t *testing.T) {
+	expectedMode := 0600
 	tests := []struct {
 		name            string
 		generatedConfig []byte
@@ -119,13 +120,17 @@ NetworkManager:
 					Node: ignition_config_types_32.Node{Path: "/etc/NetworkManager/system-connections/eth1.nmconnection"},
 					FileEmbedded1: ignition_config_types_32.FileEmbedded1{
 						Contents: ignition_config_types_32.Resource{
-							Source: pointer.StringPtr("data:text/plain,%5Bconnection%5D%0Aid%3Deth1%0Auuid%3Db6a3fd9a-4c76-4213-a698-8c0f0749b193%0Atype%3Dethernet%0Ainterface-name%3Deth1%0Apermissions%3D%0A%0A%5Bethernet%5D%0Amac-address-blacklist%3D%0A%0A%5Bipv4%5D%0Adhcp-client-id%3Dmac%0Adns-search%3D%0Amethod%3Ddisabled%0A%0A%5Bipv6%5D%0Aaddr-gen-mode%3Deui64%0Adhcp-duid%3Dll%0Adhcp-iaid%3Dmac%0Adns-search%3D%0Amethod%3Ddisabled%0A%0A%5Bproxy%5D%0A")}},
+							Source: pointer.StringPtr("data:text/plain,%5Bconnection%5D%0Aid%3Deth1%0Auuid%3Db6a3fd9a-4c76-4213-a698-8c0f0749b193%0Atype%3Dethernet%0Ainterface-name%3Deth1%0Apermissions%3D%0A%0A%5Bethernet%5D%0Amac-address-blacklist%3D%0A%0A%5Bipv4%5D%0Adhcp-client-id%3Dmac%0Adns-search%3D%0Amethod%3Ddisabled%0A%0A%5Bipv6%5D%0Aaddr-gen-mode%3Deui64%0Adhcp-duid%3Dll%0Adhcp-iaid%3Dmac%0Adns-search%3D%0Amethod%3Ddisabled%0A%0A%5Bproxy%5D%0A")},
+						Mode: &expectedMode,
+					},
 				},
 				{
 					Node: ignition_config_types_32.Node{Path: "/etc/NetworkManager/system-connections/linux-br0.nmconnection"},
 					FileEmbedded1: ignition_config_types_32.FileEmbedded1{
 						Contents: ignition_config_types_32.Resource{
-							Source: pointer.StringPtr("data:text/plain,%5Bconnection%5D%0Aid%3Dlinux-br0%0Auuid%3Df942ffa5-668d-41f3-86bd-ef53e35565f4%0Atype%3Dbridge%0Aautoconnect-slaves%3D1%0Ainterface-name%3Dlinux-br0%0Apermissions%3D%0A%0A%5Bbridge%5D%0A%0A%5Bipv4%5D%0Adhcp-client-id%3Dmac%0Adns-search%3D%0Amethod%3Ddisabled%0A%0A%5Bipv6%5D%0Aaddr-gen-mode%3Deui64%0Adhcp-duid%3Dll%0Adhcp-iaid%3Dmac%0Adns-search%3D%0Amethod%3Ddisabled%0A%0A%5Bproxy%5D%0A")}},
+							Source: pointer.StringPtr("data:text/plain,%5Bconnection%5D%0Aid%3Dlinux-br0%0Auuid%3Df942ffa5-668d-41f3-86bd-ef53e35565f4%0Atype%3Dbridge%0Aautoconnect-slaves%3D1%0Ainterface-name%3Dlinux-br0%0Apermissions%3D%0A%0A%5Bbridge%5D%0A%0A%5Bipv4%5D%0Adhcp-client-id%3Dmac%0Adns-search%3D%0Amethod%3Ddisabled%0A%0A%5Bipv6%5D%0Aaddr-gen-mode%3Deui64%0Adhcp-duid%3Dll%0Adhcp-iaid%3Dmac%0Adns-search%3D%0Amethod%3Ddisabled%0A%0A%5Bproxy%5D%0A")},
+						Mode: &expectedMode,
+					},
 				},
 			},
 		},
