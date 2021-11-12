@@ -19,8 +19,6 @@ import (
 	"net/http"
 	"path"
 	"time"
-
-	"github.com/openshift/assisted-image-service/pkg/isoeditor"
 )
 
 func notImplementedFn(name string) error { return fmt.Errorf("%s not implemented", name) }
@@ -58,13 +56,9 @@ func (f *imageFileSystem) Open(name string) (http.File, error) {
 	if im == nil {
 		return nil, fs.ErrNotExist
 	}
-	if im.rhcosStreamReader == nil {
-		var err error
-		im.rhcosStreamReader, err = isoeditor.NewRHCOSStreamReader(f.isoFile, &isoeditor.IgnitionContent{Config: im.ignitionContent}, nil)
-		if err != nil {
-			f.log.Error(err, "creating isoeditor.NewRHCOSStreamReader")
-			return nil, err
-		}
+	if err := im.Init(f.isoFile); err != nil {
+		f.log.Error(err, "failed to create image stream")
+		return nil, err
 	}
 	return im, nil
 }

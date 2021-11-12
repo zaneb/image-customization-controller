@@ -17,6 +17,8 @@ import (
 	"io"
 	"io/fs"
 	"time"
+
+	"github.com/openshift/assisted-image-service/pkg/isoeditor"
 )
 
 // imageFile is the http.File use in imageFileSystem.
@@ -31,6 +33,20 @@ type imageFile struct {
 // file interface implementation
 
 var _ fs.File = &imageFile{}
+
+func (f *imageFile) Init(isoFile string) error {
+	if f.rhcosStreamReader == nil {
+		var err error
+		f.rhcosStreamReader, err = isoeditor.NewRHCOSStreamReader(
+			isoFile,
+			&isoeditor.IgnitionContent{Config: f.ignitionContent},
+			nil)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func (f *imageFile) Write(p []byte) (n int, err error)        { return 0, notImplementedFn("Write") }
 func (f *imageFile) Stat() (fs.FileInfo, error)               { return fs.FileInfo(f), nil }
