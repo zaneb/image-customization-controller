@@ -31,10 +31,9 @@ func TestImageHandler(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	imageServer := &imageFileSystem{
-		log:         zap.New(zap.UseDevMode(true)),
-		isoFile:     "dummyfile.iso",
-		isoFileSize: 12345,
-		baseURL:     "http://localhost:8080",
+		log:     zap.New(zap.UseDevMode(true)),
+		isoFile: &baseIso{baseFileData{filename: "dummyfile.iso", size: 12345}},
+		baseURL: "http://localhost:8080",
 		images: []*imageFile{
 			{
 				name:              "host-xyz-45.iso",

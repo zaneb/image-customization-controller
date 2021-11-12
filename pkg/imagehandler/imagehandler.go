@@ -16,7 +16,6 @@ package imagehandler
 import (
 	"net/http"
 	"net/url"
-	"os"
 	"sync"
 
 	"github.com/go-logr/logr"
@@ -25,12 +24,11 @@ import (
 // imageFileSystem is an http.FileSystem that creates a virtual filesystem of
 // host images.
 type imageFileSystem struct {
-	isoFile     string
-	isoFileSize int64
-	baseURL     string
-	images      []*imageFile
-	mu          *sync.Mutex
-	log         logr.Logger
+	isoFile *baseIso
+	baseURL string
+	images  []*imageFile
+	mu      *sync.Mutex
+	log     logr.Logger
 }
 
 var _ ImageHandler = &imageFileSystem{}
@@ -43,12 +41,11 @@ type ImageHandler interface {
 
 func NewImageHandler(logger logr.Logger, isoFile, baseURL string) ImageHandler {
 	return &imageFileSystem{
-		log:         logger,
-		isoFile:     isoFile,
-		isoFileSize: 0,
-		baseURL:     baseURL,
-		images:      []*imageFile{},
-		mu:          &sync.Mutex{},
+		log:     logger,
+		isoFile: newBaseIso(isoFile),
+		baseURL: baseURL,
+		images:  []*imageFile{},
+		mu:      &sync.Mutex{},
 	}
 }
 
@@ -57,19 +54,16 @@ func (f *imageFileSystem) FileSystem() http.FileSystem {
 }
 
 func (f *imageFileSystem) ServeImage(name string, ignitionContent []byte) (string, error) {
-	if f.isoFileSize == 0 {
-		fi, err := os.Stat(f.isoFile)
-		if err != nil {
-			return "", err
-		}
-		f.isoFileSize = fi.Size()
+	size, err := f.isoFile.Size()
+	if err != nil {
+		return "", err
 	}
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.images = append(f.images, &imageFile{
 		name:            name,
-		size:            f.isoFileSize,
+		size:            size,
 		ignitionContent: ignitionContent,
 	})
 	u, err := url.Parse(f.baseURL)

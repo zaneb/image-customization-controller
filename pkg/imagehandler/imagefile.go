@@ -34,13 +34,12 @@ type imageFile struct {
 
 var _ fs.File = &imageFile{}
 
-func (f *imageFile) Init(isoFile string) error {
+func (f *imageFile) Init(isoFile baseFile) error {
 	if f.rhcosStreamReader == nil {
 		var err error
-		f.rhcosStreamReader, err = isoeditor.NewRHCOSStreamReader(
-			isoFile,
-			&isoeditor.IgnitionContent{Config: f.ignitionContent},
-			nil)
+
+		ignition := &isoeditor.IgnitionContent{Config: f.ignitionContent}
+		f.rhcosStreamReader, err = isoFile.InsertIgnition(ignition)
 		if err != nil {
 			return err
 		}
