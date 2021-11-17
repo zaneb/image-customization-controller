@@ -24,11 +24,11 @@ import (
 // imageFile is the http.File use in imageFileSystem.
 type imageFile struct {
 	io.ReadSeekCloser
-	name              string
-	size              int64
-	ignitionContent   []byte
-	rhcosStreamReader io.ReadSeeker
-	initramfs         bool
+	name            string
+	size            int64
+	ignitionContent []byte
+	imageReader     io.ReadSeeker
+	initramfs       bool
 }
 
 // file interface implementation
@@ -36,10 +36,10 @@ type imageFile struct {
 var _ fs.File = &imageFile{}
 
 func (f *imageFile) Init(inputFile baseFile) error {
-	if f.rhcosStreamReader == nil {
+	if f.imageReader == nil {
 		var err error
 		ignition := &isoeditor.IgnitionContent{Config: f.ignitionContent}
-		f.rhcosStreamReader, err = inputFile.InsertIgnition(ignition)
+		f.imageReader, err = inputFile.InsertIgnition(ignition)
 		if err != nil {
 			return err
 		}
@@ -51,9 +51,9 @@ func (f *imageFile) Write(p []byte) (n int, err error)        { return 0, notImp
 func (f *imageFile) Stat() (fs.FileInfo, error)               { return fs.FileInfo(f), nil }
 func (f *imageFile) Close() error                             { return nil }
 func (f *imageFile) Readdir(count int) ([]fs.FileInfo, error) { return []fs.FileInfo{}, nil }
-func (f *imageFile) Read(p []byte) (n int, err error)         { return f.rhcosStreamReader.Read(p) }
+func (f *imageFile) Read(p []byte) (n int, err error)         { return f.imageReader.Read(p) }
 func (f *imageFile) Seek(offset int64, whence int) (int64, error) {
-	return f.rhcosStreamReader.Seek(offset, whence)
+	return f.imageReader.Seek(offset, whence)
 }
 
 // fileInfo interface implementation
