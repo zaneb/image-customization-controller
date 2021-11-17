@@ -56,7 +56,7 @@ func (f *imageFileSystem) Open(name string) (http.File, error) {
 	if im == nil {
 		return nil, fs.ErrNotExist
 	}
-	if err := im.Init(f.isoFile); err != nil {
+	if err := im.Init(f.getBaseImage(im.initramfs)); err != nil {
 		f.log.Error(err, "failed to create image stream")
 		return nil, err
 	}

@@ -86,7 +86,7 @@ func loadStaticNMState(env *env.EnvInputs, nmstateDir string, imageServer imageh
 			log.Info("image mapping not available, using image", "name", imageName)
 		}
 
-		url, err := imageServer.ServeImage(imageName, ign)
+		url, err := imageServer.ServeImage(imageName, ign, false)
 		if err != nil {
 			return err
 		}
@@ -130,7 +130,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), env.DeployISO, imagesPublishAddr)
+	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), env.DeployISO, env.DeployInitrd, imagesPublishAddr)
 	http.Handle("/", http.FileServer(imageServer.FileSystem()))
 
 	if err := loadStaticNMState(env, nmstateDir, imageServer); err != nil {

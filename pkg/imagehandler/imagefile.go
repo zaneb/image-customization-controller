@@ -28,6 +28,7 @@ type imageFile struct {
 	size              int64
 	ignitionContent   []byte
 	rhcosStreamReader io.ReadSeeker
+	initramfs         bool
 }
 
 // file interface implementation

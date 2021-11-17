@@ -115,7 +115,7 @@ func (r *PreprovisioningImageReconciler) reconcile(ctx context.Context, img *met
 	format := metal3.ImageFormatISO
 	imageName := img.Name + "." + string(format)
 
-	url, err := r.ImageHandler.ServeImage(imageName, ignitionConfig)
+	url, err := r.ImageHandler.ServeImage(imageName, ignitionConfig, false)
 	if err != nil {
 		return setError(ctx, generation, &img.Status, reasonImageServingError, err.Error()), err
 	}

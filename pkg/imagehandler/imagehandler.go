@@ -24,11 +24,12 @@ import (
 // imageFileSystem is an http.FileSystem that creates a virtual filesystem of
 // host images.
 type imageFileSystem struct {
-	isoFile *baseIso
-	baseURL string
-	images  []*imageFile
-	mu      *sync.Mutex
-	log     logr.Logger
+	isoFile       *baseIso
+	initramfsFile *baseInitramfs
+	baseURL       string
+	images        []*imageFile
+	mu            *sync.Mutex
+	log           logr.Logger
 }
 
 var _ ImageHandler = &imageFileSystem{}
@@ -36,16 +37,17 @@ var _ http.FileSystem = &imageFileSystem{}
 
 type ImageHandler interface {
 	FileSystem() http.FileSystem
-	ServeImage(name string, ignitionContent []byte) (string, error)
+	ServeImage(name string, ignitionContent []byte, initramfs bool) (string, error)
 }
 
-func NewImageHandler(logger logr.Logger, isoFile, baseURL string) ImageHandler {
+func NewImageHandler(logger logr.Logger, isoFile, initramfsFile, baseURL string) ImageHandler {
 	return &imageFileSystem{
-		log:     logger,
-		isoFile: newBaseIso(isoFile),
-		baseURL: baseURL,
-		images:  []*imageFile{},
-		mu:      &sync.Mutex{},
+		log:           logger,
+		isoFile:       newBaseIso(isoFile),
+		initramfsFile: newBaseInitramfs(initramfsFile),
+		baseURL:       baseURL,
+		images:        []*imageFile{},
+		mu:            &sync.Mutex{},
 	}
 }
 
@@ -53,8 +55,16 @@ func (f *imageFileSystem) FileSystem() http.FileSystem {
 	return f
 }
 
-func (f *imageFileSystem) ServeImage(name string, ignitionContent []byte) (string, error) {
-	size, err := f.isoFile.Size()
+func (f *imageFileSystem) getBaseImage(initramfs bool) baseFile {
+	if initramfs {
+		return f.initramfsFile
+	} else {
+		return f.isoFile
+	}
+}
+
+func (f *imageFileSystem) ServeImage(name string, ignitionContent []byte, initramfs bool) (string, error) {
+	size, err := f.getBaseImage(initramfs).Size()
 	if err != nil {
 		return "", err
 	}
@@ -65,6 +75,7 @@ func (f *imageFileSystem) ServeImage(name string, ignitionContent []byte) (strin
 		name:            name,
 		size:            size,
 		ignitionContent: ignitionContent,
+		initramfs:       initramfs,
 	})
 	u, err := url.Parse(f.baseURL)
 	if err != nil {
