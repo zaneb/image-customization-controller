@@ -39,3 +39,15 @@ func newBaseIso(filename string) *baseIso {
 func (biso *baseIso) InsertIgnition(ignition *isoeditor.IgnitionContent) (io.ReadSeeker, error) {
 	return isoeditor.NewRHCOSStreamReader(biso.filename, ignition, nil)
 }
+
+type baseInitramfs struct {
+	baseFileData
+}
+
+func newBaseInitramfs(filename string) *baseInitramfs {
+	return &baseInitramfs{baseFileData{filename: filename}}
+}
+
+func (birfs *baseInitramfs) InsertIgnition(ignition *isoeditor.IgnitionContent) (io.ReadSeeker, error) {
+	return isoeditor.NewInitRamFSStreamReader(birfs.filename, ignition)
+}
