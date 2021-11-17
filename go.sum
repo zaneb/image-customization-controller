@@ -511,8 +511,8 @@ github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1y
 github.com/onsi/gomega v1.14.0/go.mod h1:cIuvLEne0aoVhAgh/O6ac0Op8WWw9H6eYCriF+tEHG0=
 github.com/onsi/gomega v1.15.0 h1:WjP/FQ/sk43MRmnEcT+MlDw2TFvkrXlprrPST/IudjU=
 github.com/onsi/gomega v1.15.0/go.mod h1:cIuvLEne0aoVhAgh/O6ac0Op8WWw9H6eYCriF+tEHG0=
-github.com/openshift/assisted-image-service v0.0.0-20211012141310-4010348b8e14 h1:NlkZmFhN7GJVEgBcwmhzVhGZjWMK40Nq7scKfaeP7nc=
-github.com/openshift/assisted-image-service v0.0.0-20211012141310-4010348b8e14/go.mod h1:/IQ+1G8uT5P/YW9YUi1SBAbxulmlpPAA6rI/KEHmqfQ=
+github.com/openshift/assisted-image-service v0.0.0-20211117195230-cdcb2b829ab2 h1:+gcwjGhbLdWtfpDIikhDO7FN7Lx2Uhx5HktPjP5GwEo=
+github.com/openshift/assisted-image-service v0.0.0-20211117195230-cdcb2b829ab2/go.mod h1:DSFZEsQZpIHqnV9saugs7meqdYmGKlI5FKKkDe421/g=
 github.com/openshift/baremetal-operator v0.0.0-20211116121852-fffb8279f132 h1:2jAZkUdiESTQRlW0h/QIyHKR3npd3UjsPJQIIwArqnM=
 github.com/openshift/baremetal-operator v0.0.0-20211116121852-fffb8279f132/go.mod h1:jcHrkDEev1N4uTA4TjwoiU5/llljPZRU3ijBsYQ1Ddk=
 github.com/openshift/baremetal-operator/apis v0.0.0-20211116121852-fffb8279f132 h1:Yd6mf/Vanok5otqyODCuLfFJD5BsI+24/7xxxgyjiio=
@@ -653,6 +653,7 @@ github.com/tdakkota/asciicheck v0.0.0-20200416190851-d7f85be797a2 h1:Xr9gkxfOP0K
 github.com/tdakkota/asciicheck v0.0.0-20200416190851-d7f85be797a2/go.mod h1:yHp0ai0Z9gUljN3o0xMhYJnH/IcvkdTBOX2fmJ93JEM=
 github.com/tetafro/godot v0.4.9 h1:dSOiuasshpevY73eeI3+zaqFnXSBKJ3mvxbyhh54VRo=
 github.com/tetafro/godot v0.4.9/go.mod h1:/7NLHhv08H1+8DNj0MElpAACw1ajsCuf3TKNQxA5S+0=
+github.com/thoas/go-funk v0.9.1/go.mod h1:+IWnUfUmFO1+WVYQWQtIJHeRRdaIyyYglZN7xzUPe4Q=
 github.com/timakin/bodyclose v0.0.0-20190930140734-f7f2e9bca95e h1:RumXZ56IrCj4CL+g1b9OL/oH0QnsF976bC8xQFYUD5Q=
 github.com/timakin/bodyclose v0.0.0-20190930140734-f7f2e9bca95e/go.mod h1:Qimiffbc6q9tBWlVV6x0P9sat/ao1xEkREYPPj9hphk=
 github.com/tmc/grpc-websocket-proxy v0.0.0-20170815181823-89b8d40f7ca8/go.mod h1:ncp9v5uamzpCO7NfCPTXjqaC+bZgJeR0sMTm6dMHP7U=

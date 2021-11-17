@@ -11,7 +11,7 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/metal3-io/baremetal-operator v0.0.0-00010101000000-000000000000
 	github.com/metal3-io/baremetal-operator/apis v0.0.0
-	github.com/openshift/assisted-image-service v0.0.0-20211012141310-4010348b8e14
+	github.com/openshift/assisted-image-service v0.0.0-20211117195230-cdcb2b829ab2
 	github.com/pkg/errors v0.9.1
 	github.com/vincent-petithory/dataurl v0.0.0-20160330182126-9a301d65acbb
 	k8s.io/api v0.22.1
