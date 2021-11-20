@@ -133,7 +133,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), envInputs.DeployISO, imagesPublishAddr)
+	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), envInputs.DeployISO, envInputs.DeployInitrd, imagesPublishAddr)
 	http.Handle("/", http.FileServer(imageServer.FileSystem()))
 
 	go func() {

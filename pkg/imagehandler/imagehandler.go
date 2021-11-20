@@ -16,7 +16,6 @@ package imagehandler
 import (
 	"net/http"
 	"net/url"
-	"os"
 	"sync"
 
 	"github.com/go-logr/logr"
@@ -25,12 +24,12 @@ import (
 // imageFileSystem is an http.FileSystem that creates a virtual filesystem of
 // host images.
 type imageFileSystem struct {
-	isoFile     string
-	isoFileSize int64
-	baseURL     string
-	images      []*imageFile
-	mu          *sync.Mutex
-	log         logr.Logger
+	isoFile       *baseIso
+	initramfsFile *baseInitramfs
+	baseURL       string
+	images        []*imageFile
+	mu            *sync.Mutex
+	log           logr.Logger
 }
 
 var _ ImageHandler = &imageFileSystem{}
@@ -38,17 +37,17 @@ var _ http.FileSystem = &imageFileSystem{}
 
 type ImageHandler interface {
 	FileSystem() http.FileSystem
-	ServeImage(name string, ignitionContent []byte) (string, error)
+	ServeImage(name string, ignitionContent []byte, initramfs bool) (string, error)
 }
 
-func NewImageHandler(logger logr.Logger, isoFile, baseURL string) ImageHandler {
+func NewImageHandler(logger logr.Logger, isoFile, initramfsFile, baseURL string) ImageHandler {
 	return &imageFileSystem{
-		log:         logger,
-		isoFile:     isoFile,
-		isoFileSize: 0,
-		baseURL:     baseURL,
-		images:      []*imageFile{},
-		mu:          &sync.Mutex{},
+		log:           logger,
+		isoFile:       newBaseIso(isoFile),
+		initramfsFile: newBaseInitramfs(initramfsFile),
+		baseURL:       baseURL,
+		images:        []*imageFile{},
+		mu:            &sync.Mutex{},
 	}
 }
 
@@ -56,21 +55,27 @@ func (f *imageFileSystem) FileSystem() http.FileSystem {
 	return f
 }
 
-func (f *imageFileSystem) ServeImage(name string, ignitionContent []byte) (string, error) {
-	if f.isoFileSize == 0 {
-		fi, err := os.Stat(f.isoFile)
-		if err != nil {
-			return "", err
-		}
-		f.isoFileSize = fi.Size()
+func (f *imageFileSystem) getBaseImage(initramfs bool) baseFile {
+	if initramfs {
+		return f.initramfsFile
+	} else {
+		return f.isoFile
+	}
+}
+
+func (f *imageFileSystem) ServeImage(name string, ignitionContent []byte, initramfs bool) (string, error) {
+	size, err := f.getBaseImage(initramfs).Size()
+	if err != nil {
+		return "", err
 	}
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.images = append(f.images, &imageFile{
 		name:            name,
-		size:            f.isoFileSize,
+		size:            size,
 		ignitionContent: ignitionContent,
+		initramfs:       initramfs,
 	})
 	u, err := url.Parse(f.baseURL)
 	if err != nil {
