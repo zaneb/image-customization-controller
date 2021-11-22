@@ -27,7 +27,7 @@ type imageFileSystem struct {
 	isoFile       *baseIso
 	initramfsFile *baseInitramfs
 	baseURL       string
-	images        []*imageFile
+	images        map[string]*imageFile
 	mu            *sync.Mutex
 	log           logr.Logger
 }
@@ -46,7 +46,7 @@ func NewImageHandler(logger logr.Logger, isoFile, initramfsFile, baseURL string)
 		isoFile:       newBaseIso(isoFile),
 		initramfsFile: newBaseInitramfs(initramfsFile),
 		baseURL:       baseURL,
-		images:        []*imageFile{},
+		images:        map[string]*imageFile{},
 		mu:            &sync.Mutex{},
 	}
 }
@@ -71,12 +71,12 @@ func (f *imageFileSystem) ServeImage(name string, ignitionContent []byte, initra
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.images = append(f.images, &imageFile{
+	f.images[name] = &imageFile{
 		name:            name,
 		size:            size,
 		ignitionContent: ignitionContent,
 		initramfs:       initramfs,
-	})
+	}
 	u, err := url.Parse(f.baseURL)
 	if err != nil {
 		return "", err
@@ -88,10 +88,5 @@ func (f *imageFileSystem) ServeImage(name string, ignitionContent []byte, initra
 func (f *imageFileSystem) imageFileByName(name string) *imageFile {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	for _, im := range f.images {
-		if im.name == name {
-			return im
-		}
-	}
-	return nil
+	return f.images[name]
 }

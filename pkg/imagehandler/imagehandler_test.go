@@ -47,8 +47,8 @@ func TestImageHandler(t *testing.T) {
 		log:     zap.New(zap.UseDevMode(true)),
 		isoFile: &baseIso{baseFileData{filename: "dummyfile.iso", size: 12345}},
 		baseURL: "http://localhost:8080",
-		images: []*imageFile{
-			{
+		images: map[string]*imageFile{
+			"host-xyz-45.iso": {
 				name:            "host-xyz-45.iso",
 				size:            12345,
 				ignitionContent: []byte("asietonarst"),
