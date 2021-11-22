@@ -146,15 +146,16 @@ func errorRetryDelay(status metal3.PreprovisioningImageStatus) time.Duration {
 }
 
 func (r *PreprovisioningImageReconciler) buildIgnitionConfig(secret *corev1.Secret) ([]byte, error) {
-	if secret == nil {
-		return nil, nil
-	}
-	nmstate, ok := secret.Data["nmstate"]
-	if !ok {
-		return nil, errors.New("nmstate data not in the secret")
+	nmstateData := []byte{}
+	if secret != nil {
+		var ok bool
+		nmstateData, ok = secret.Data["nmstate"]
+		if !ok {
+			return nil, errors.New("nmstate data not in the secret")
+		}
 	}
 
-	builder := ignition.New(nmstate,
+	builder := ignition.New(nmstateData,
 		r.EnvInputs.IronicBaseURL,
 		r.EnvInputs.IronicAgentImage,
 		r.EnvInputs.IronicAgentPullSecret,
