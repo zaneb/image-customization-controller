@@ -72,11 +72,14 @@ func (f *imageFileSystem) ServeImage(name string, ignitionContent []byte, initra
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.images[name] = &imageFile{
-		name:            name,
-		size:            size,
-		ignitionContent: ignitionContent,
-		initramfs:       initramfs,
+
+	if _, exists := f.images[name]; !exists {
+		f.images[name] = &imageFile{
+			name:            name,
+			size:            size,
+			ignitionContent: ignitionContent,
+			initramfs:       initramfs,
+		}
 	}
 	u, err := url.Parse(f.baseURL)
 	if err != nil {
