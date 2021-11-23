@@ -14,6 +14,7 @@ limitations under the License.
 package imagehandler
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -22,6 +23,18 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
+
+type closer struct {
+	io.ReadSeeker
+}
+
+func (c closer) Close() error {
+	return nil
+}
+
+func nopCloser(stream io.ReadSeeker) io.ReadSeekCloser {
+	return closer{stream}
+}
 
 func TestImageHandler(t *testing.T) {
 	req, err := http.NewRequest("GET", "/host-xyz-45.iso", nil)
@@ -39,7 +52,7 @@ func TestImageHandler(t *testing.T) {
 				name:            "host-xyz-45.iso",
 				size:            12345,
 				ignitionContent: []byte("asietonarst"),
-				imageReader:     strings.NewReader("aiosetnarsetin"),
+				imageReader:     nopCloser(strings.NewReader("aiosetnarsetin")),
 			},
 		},
 		mu: &sync.Mutex{},

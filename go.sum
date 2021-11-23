@@ -511,8 +511,8 @@ github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1y
 github.com/onsi/gomega v1.14.0/go.mod h1:cIuvLEne0aoVhAgh/O6ac0Op8WWw9H6eYCriF+tEHG0=
 github.com/onsi/gomega v1.15.0 h1:WjP/FQ/sk43MRmnEcT+MlDw2TFvkrXlprrPST/IudjU=
 github.com/onsi/gomega v1.15.0/go.mod h1:cIuvLEne0aoVhAgh/O6ac0Op8WWw9H6eYCriF+tEHG0=
-github.com/openshift/assisted-image-service v0.0.0-20211117195230-cdcb2b829ab2 h1:+gcwjGhbLdWtfpDIikhDO7FN7Lx2Uhx5HktPjP5GwEo=
-github.com/openshift/assisted-image-service v0.0.0-20211117195230-cdcb2b829ab2/go.mod h1:DSFZEsQZpIHqnV9saugs7meqdYmGKlI5FKKkDe421/g=
+github.com/openshift/assisted-image-service v0.0.0-20211122133112-1552361c0458 h1:TDYrQaxV3PObc4pmcft15BUCbuDe0UNhzXTDZGnvzZ0=
+github.com/openshift/assisted-image-service v0.0.0-20211122133112-1552361c0458/go.mod h1:DSFZEsQZpIHqnV9saugs7meqdYmGKlI5FKKkDe421/g=
 github.com/openshift/baremetal-operator v0.0.0-20211116121852-fffb8279f132 h1:2jAZkUdiESTQRlW0h/QIyHKR3npd3UjsPJQIIwArqnM=
 github.com/openshift/baremetal-operator v0.0.0-20211116121852-fffb8279f132/go.mod h1:jcHrkDEev1N4uTA4TjwoiU5/llljPZRU3ijBsYQ1Ddk=
 github.com/openshift/baremetal-operator/apis v0.0.0-20211116121852-fffb8279f132 h1:Yd6mf/Vanok5otqyODCuLfFJD5BsI+24/7xxxgyjiio=

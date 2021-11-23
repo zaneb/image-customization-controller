@@ -267,7 +267,7 @@ github.com/nbutton23/zxcvbn-go/scoring
 github.com/nbutton23/zxcvbn-go/utils/math
 # github.com/nishanths/exhaustive v0.1.0
 github.com/nishanths/exhaustive
-# github.com/openshift/assisted-image-service v0.0.0-20211117195230-cdcb2b829ab2
+# github.com/openshift/assisted-image-service v0.0.0-20211122133112-1552361c0458
 ## explicit
 github.com/openshift/assisted-image-service/pkg/isoeditor
 github.com/openshift/assisted-image-service/pkg/overlay

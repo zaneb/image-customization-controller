@@ -27,7 +27,7 @@ type imageFile struct {
 	name            string
 	size            int64
 	ignitionContent []byte
-	imageReader     io.ReadSeeker
+	imageReader     isoeditor.ImageReader
 	initramfs       bool
 }
 
@@ -47,9 +47,13 @@ func (f *imageFile) Init(inputFile baseFile) error {
 	return nil
 }
 
-func (f *imageFile) Write(p []byte) (n int, err error)        { return 0, notImplementedFn("Write") }
-func (f *imageFile) Stat() (fs.FileInfo, error)               { return fs.FileInfo(f), nil }
-func (f *imageFile) Close() error                             { return nil }
+func (f *imageFile) Write(p []byte) (n int, err error) { return 0, notImplementedFn("Write") }
+func (f *imageFile) Stat() (fs.FileInfo, error)        { return fs.FileInfo(f), nil }
+func (f *imageFile) Close() error {
+	err := f.imageReader.Close()
+	f.imageReader = nil
+	return err
+}
 func (f *imageFile) Readdir(count int) ([]fs.FileInfo, error) { return []fs.FileInfo{}, nil }
 func (f *imageFile) Read(p []byte) (n int, err error)         { return f.imageReader.Read(p) }
 func (f *imageFile) Seek(offset int64, whence int) (int64, error) {

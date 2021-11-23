@@ -1,7 +1,6 @@
 package imagehandler
 
 import (
-	"io"
 	"os"
 
 	"github.com/openshift/assisted-image-service/pkg/isoeditor"
@@ -9,7 +8,7 @@ import (
 
 type baseFile interface {
 	Size() (int64, error)
-	InsertIgnition(*isoeditor.IgnitionContent) (io.ReadSeeker, error)
+	InsertIgnition(*isoeditor.IgnitionContent) (isoeditor.ImageReader, error)
 }
 
 type baseFileData struct {
@@ -36,7 +35,7 @@ func newBaseIso(filename string) *baseIso {
 	return &baseIso{baseFileData{filename: filename}}
 }
 
-func (biso *baseIso) InsertIgnition(ignition *isoeditor.IgnitionContent) (io.ReadSeeker, error) {
+func (biso *baseIso) InsertIgnition(ignition *isoeditor.IgnitionContent) (isoeditor.ImageReader, error) {
 	return isoeditor.NewRHCOSStreamReader(biso.filename, ignition, nil)
 }
 
@@ -48,6 +47,6 @@ func newBaseInitramfs(filename string) *baseInitramfs {
 	return &baseInitramfs{baseFileData{filename: filename}}
 }
 
-func (birfs *baseInitramfs) InsertIgnition(ignition *isoeditor.IgnitionContent) (io.ReadSeeker, error) {
+func (birfs *baseInitramfs) InsertIgnition(ignition *isoeditor.IgnitionContent) (isoeditor.ImageReader, error) {
 	return isoeditor.NewInitRamFSStreamReader(birfs.filename, ignition)
 }
