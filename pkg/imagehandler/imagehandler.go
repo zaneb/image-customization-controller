@@ -38,6 +38,7 @@ var _ http.FileSystem = &imageFileSystem{}
 type ImageHandler interface {
 	FileSystem() http.FileSystem
 	ServeImage(name string, ignitionContent []byte, initramfs bool) (string, error)
+	RemoveImage(name string)
 }
 
 func NewImageHandler(logger logr.Logger, isoFile, initramfsFile, baseURL string) ImageHandler {
@@ -89,4 +90,10 @@ func (f *imageFileSystem) imageFileByName(name string) *imageFile {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.images[name]
+}
+
+func (f *imageFileSystem) RemoveImage(name string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.images, name)
 }

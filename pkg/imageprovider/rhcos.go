@@ -46,18 +46,21 @@ func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.Netw
 	).Generate()
 }
 
+func imageName(data imageprovider.ImageData) string {
+	return data.ImageMetadata.Name + "." + string(data.Format)
+}
+
 func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkData imageprovider.NetworkData, log logr.Logger) (string, error) {
 	ignitionConfig, err := ip.buildIgnitionConfig(networkData)
 	if err != nil {
 		return "", err
 	}
 
-	imageName := data.ImageMetadata.Name + "." + string(data.Format)
-
-	return ip.ImageHandler.ServeImage(imageName, ignitionConfig,
+	return ip.ImageHandler.ServeImage(imageName(data), ignitionConfig,
 		data.Format == metal3.ImageFormatInitRD)
 }
 
 func (ip *rhcosImageProvider) DiscardImage(data imageprovider.ImageData) error {
+	ip.ImageHandler.RemoveImage(imageName(data))
 	return nil
 }
