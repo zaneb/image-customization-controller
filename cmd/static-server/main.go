@@ -80,17 +80,20 @@ func loadStaticNMState(env *env.EnvInputs, nmstateDir string, imageServer imageh
 			return errors.WithMessagef(err, "problem generating ignition %s", f.Name())
 		}
 
-		imageName, ok := imageMapping[f.Name()]
-		if !ok {
-			imageName = strings.Replace(f.Name(), ".yaml", ".iso", 1) // master-1.yaml -> master-1.iso
-			log.Info("image mapping not available, using image", "name", imageName)
-		}
+		for _, suffix := range []string{".iso", ".initramfs"} {
+			imageName, ok := imageMapping[f.Name()]
+			if !ok {
+				imageName = strings.TrimSuffix(f.Name(), ".yaml") + suffix
+				log.Info("image mapping not available, using image", "name", imageName)
+			}
 
-		url, err := imageServer.ServeImage(imageName, ign, false, true)
-		if err != nil {
-			return err
+			isInitramfs := !strings.HasSuffix(imageName, ".iso")
+			url, err := imageServer.ServeImage(imageName, ign, isInitramfs, true)
+			if err != nil {
+				return err
+			}
+			log.Info("serving", "image", imageName, "url", url)
 		}
-		log.Info("serving", "image", imageName, "url", url)
 	}
 	return nil
 }

@@ -56,7 +56,7 @@ func TestLoadStaticNMState(t *testing.T) {
 	if err := loadStaticNMState(env, "../../test/data", fifs); err != nil {
 		t.Errorf("loadStaticNMState() error = %v", err)
 	}
-	if !reflect.DeepEqual(fifs.imagesServed, []string{"master-0.iso", "master-1.iso", "master-2.iso"}) {
+	if !reflect.DeepEqual(fifs.imagesServed, []string{"master-0.iso", "master-0.iso", "master-1.iso", "master-1.iso", "master-2.iso", "master-2.iso"}) {
 		t.Errorf("loadStaticNMState() images = %v", fifs.imagesServed)
 	}
 }
