@@ -28,7 +28,7 @@ func (ip *rhcosImageProvider) SupportsArchitecture(arch string) bool {
 
 func (ip *rhcosImageProvider) SupportsFormat(format metal3.ImageFormat) bool {
 	switch format {
-	case metal3.ImageFormatISO:
+	case metal3.ImageFormatISO, metal3.ImageFormatInitRD:
 		return true
 	default:
 		return false
@@ -54,7 +54,8 @@ func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkDa
 
 	imageName := data.ImageMetadata.Name + "." + string(data.Format)
 
-	return ip.ImageHandler.ServeImage(imageName, ignitionConfig, false)
+	return ip.ImageHandler.ServeImage(imageName, ignitionConfig,
+		data.Format == metal3.ImageFormatInitRD)
 }
 
 func (ip *rhcosImageProvider) DiscardImage(data imageprovider.ImageData) error {
