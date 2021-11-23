@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	"github.com/go-logr/logr"
+	"github.com/google/uuid"
 )
 
 // imageFileSystem is an http.FileSystem that creates a virtual filesystem of
@@ -27,6 +28,7 @@ type imageFileSystem struct {
 	isoFile       *baseIso
 	initramfsFile *baseInitramfs
 	baseURL       string
+	keys          map[string]string
 	images        map[string]*imageFile
 	mu            *sync.Mutex
 	log           logr.Logger
@@ -37,8 +39,8 @@ var _ http.FileSystem = &imageFileSystem{}
 
 type ImageHandler interface {
 	FileSystem() http.FileSystem
-	ServeImage(name string, ignitionContent []byte, initramfs bool) (string, error)
-	RemoveImage(name string)
+	ServeImage(key string, ignitionContent []byte, initramfs, static bool) (string, error)
+	RemoveImage(key string)
 }
 
 func NewImageHandler(logger logr.Logger, isoFile, initramfsFile, baseURL string) ImageHandler {
@@ -64,7 +66,18 @@ func (f *imageFileSystem) getBaseImage(initramfs bool) baseFile {
 	}
 }
 
-func (f *imageFileSystem) ServeImage(name string, ignitionContent []byte, initramfs bool) (string, error) {
+func (f *imageFileSystem) getNameForKey(key string) (name string, err error) {
+	if img, exists := f.images[key]; exists {
+		return img.name, nil
+	}
+	rand, err := uuid.NewRandom()
+	if err == nil {
+		name = rand.String()
+	}
+	return
+}
+
+func (f *imageFileSystem) ServeImage(key string, ignitionContent []byte, initramfs, static bool) (string, error) {
 	size, err := f.getBaseImage(initramfs).Size()
 	if err != nil {
 		return "", err
@@ -73,14 +86,24 @@ func (f *imageFileSystem) ServeImage(name string, ignitionContent []byte, initra
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if _, exists := f.images[name]; !exists {
-		f.images[name] = &imageFile{
+	name := key
+	if !static {
+		name, err = f.getNameForKey(key)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	if _, exists := f.images[key]; !exists {
+		f.keys[name] = key
+		f.images[key] = &imageFile{
 			name:            name,
 			size:            size,
 			ignitionContent: ignitionContent,
 			initramfs:       initramfs,
 		}
 	}
+
 	u, err := url.Parse(f.baseURL)
 	if err != nil {
 		return "", err
@@ -92,11 +115,19 @@ func (f *imageFileSystem) ServeImage(name string, ignitionContent []byte, initra
 func (f *imageFileSystem) imageFileByName(name string) *imageFile {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.images[name]
+
+	if key, exists := f.keys[name]; exists {
+		return f.images[key]
+	}
+	return nil
 }
 
-func (f *imageFileSystem) RemoveImage(name string) {
+func (f *imageFileSystem) RemoveImage(key string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	delete(f.images, name)
+
+	if img, exists := f.images[key]; exists {
+		delete(f.keys, img.name)
+		delete(f.images, key)
+	}
 }

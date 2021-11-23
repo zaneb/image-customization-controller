@@ -48,7 +48,7 @@ func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.Netw
 	).Generate()
 }
 
-func imageName(data imageprovider.ImageData) string {
+func imageKey(data imageprovider.ImageData) string {
 	return fmt.Sprintf("%s-%s-%s-%s.%s",
 		data.ImageMetadata.Namespace,
 		data.ImageMetadata.Name,
@@ -64,11 +64,11 @@ func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkDa
 		return "", err
 	}
 
-	return ip.ImageHandler.ServeImage(imageName(data), ignitionConfig,
-		data.Format == metal3.ImageFormatInitRD)
+	return ip.ImageHandler.ServeImage(imageKey(data), ignitionConfig,
+		data.Format == metal3.ImageFormatInitRD, false)
 }
 
 func (ip *rhcosImageProvider) DiscardImage(data imageprovider.ImageData) error {
-	ip.ImageHandler.RemoveImage(imageName(data))
+	ip.ImageHandler.RemoveImage(imageKey(data))
 	return nil
 }

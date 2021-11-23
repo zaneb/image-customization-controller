@@ -86,7 +86,7 @@ func loadStaticNMState(env *env.EnvInputs, nmstateDir string, imageServer imageh
 			log.Info("image mapping not available, using image", "name", imageName)
 		}
 
-		url, err := imageServer.ServeImage(imageName, ign, false)
+		url, err := imageServer.ServeImage(imageName, ign, false, true)
 		if err != nil {
 			return err
 		}

@@ -37,7 +37,7 @@ func nopCloser(stream io.ReadSeeker) io.ReadSeekCloser {
 }
 
 func TestImageHandler(t *testing.T) {
-	req, err := http.NewRequest("GET", "/host-xyz-45.iso", nil)
+	req, err := http.NewRequest("GET", "/host-xyz-45-uuid", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,9 +47,12 @@ func TestImageHandler(t *testing.T) {
 		log:     zap.New(zap.UseDevMode(true)),
 		isoFile: &baseIso{baseFileData{filename: "dummyfile.iso", size: 12345}},
 		baseURL: "http://localhost:8080",
+		keys: map[string]string{
+			"host-xyz-45-uuid": "host-xyz-45.iso",
+		},
 		images: map[string]*imageFile{
 			"host-xyz-45.iso": {
-				name:            "host-xyz-45.iso",
+				name:            "host-xyz-45-uuid",
 				size:            12345,
 				ignitionContent: []byte("asietonarst"),
 				imageReader:     nopCloser(strings.NewReader("aiosetnarsetin")),
