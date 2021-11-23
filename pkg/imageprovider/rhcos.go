@@ -1,6 +1,8 @@
 package imageprovider
 
 import (
+	"fmt"
+
 	"github.com/go-logr/logr"
 
 	metal3 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
@@ -47,7 +49,13 @@ func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.Netw
 }
 
 func imageName(data imageprovider.ImageData) string {
-	return data.ImageMetadata.Name + "." + string(data.Format)
+	return fmt.Sprintf("%s-%s-%s-%s.%s",
+		data.ImageMetadata.Namespace,
+		data.ImageMetadata.Name,
+		data.ImageMetadata.UID,
+		data.Architecture,
+		data.Format,
+	)
 }
 
 func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkData imageprovider.NetworkData, log logr.Logger) (string, error) {
