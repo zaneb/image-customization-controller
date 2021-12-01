@@ -40,6 +40,11 @@ var (
 )
 
 func loadStaticNMState(env *env.EnvInputs, nmstateDir string, imageServer imagehandler.ImageHandler) error {
+	registries, err := env.RegistriesConf()
+	if err != nil {
+		return err
+	}
+
 	files, err := ioutil.ReadDir(nmstateDir)
 	if err != nil {
 		return errors.WithMessagef(err, "problem reading %s", nmstateDir)
@@ -53,7 +58,7 @@ func loadStaticNMState(env *env.EnvInputs, nmstateDir string, imageServer imageh
 		if err != nil {
 			return errors.WithMessagef(err, "problem reading %s", path.Join(nmstateDir, f.Name()))
 		}
-		igBuilder := ignition.New(b,
+		igBuilder := ignition.New(b, registries,
 			env.IronicBaseURL,
 			env.IronicAgentImage,
 			env.IronicAgentPullSecret,

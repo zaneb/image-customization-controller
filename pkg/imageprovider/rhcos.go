@@ -40,7 +40,7 @@ func (ip *rhcosImageProvider) SupportsFormat(format metal3.ImageFormat) bool {
 func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.NetworkData) ([]byte, error) {
 	nmstateData := networkData["nmstate"]
 
-	return ignition.New(nmstateData,
+	return ignition.New(nmstateData, []byte{},
 		ip.EnvInputs.IronicBaseURL,
 		ip.EnvInputs.IronicAgentImage,
 		ip.EnvInputs.IronicAgentPullSecret,
