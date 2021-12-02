@@ -9,7 +9,7 @@ require (
 	github.com/golangci/golangci-lint v1.32.0
 	github.com/google/go-cmp v0.5.5
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/metal3-io/baremetal-operator v0.0.0-00010101000000-000000000000
+	github.com/metal3-io/baremetal-operator v0.0.0
 	github.com/metal3-io/baremetal-operator/apis v0.0.0
 	github.com/openshift/assisted-image-service v0.0.0-20211122133112-1552361c0458
 	github.com/pkg/errors v0.9.1
@@ -23,7 +23,7 @@ require (
 )
 
 replace (
-	github.com/metal3-io/baremetal-operator => github.com/openshift/baremetal-operator v0.0.0-20211116121852-fffb8279f132
-	github.com/metal3-io/baremetal-operator/apis => github.com/openshift/baremetal-operator/apis v0.0.0-20211116121852-fffb8279f132
-	github.com/metal3-io/baremetal-operator/pkg/ironic => github.com/openshift/baremetal-operator/pkg/ironic v0.0.0-20211116121852-fffb8279f132
+	github.com/metal3-io/baremetal-operator => github.com/openshift/baremetal-operator v0.0.0-20211202144449-e5fb40679cf0
+	github.com/metal3-io/baremetal-operator/apis => github.com/openshift/baremetal-operator/apis v0.0.0-20211202144449-e5fb40679cf0
+	github.com/metal3-io/baremetal-operator/pkg/hardwareutils => github.com/openshift/baremetal-operator/pkg/hardwareutils v0.0.0-20211202144449-e5fb40679cf0
 )

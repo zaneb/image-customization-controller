@@ -22,6 +22,8 @@ import (
 // +kubebuilder:validation:Enum=iso;initrd
 type ImageFormat string
 
+const PreprovisioningImageFinalizer = "preprovisioningimage.metal3.io"
+
 const (
 	ImageFormatISO    ImageFormat = "iso"
 	ImageFormatInitRD ImageFormat = "initrd"
@@ -37,6 +39,10 @@ type PreprovisioningImageSpec struct {
 	// architecture is the processor architecture for which to build the image.
 	// +optional
 	Architecture string `json:"architecture,omitempty"`
+
+	// acceptFormats is a list of acceptable image formats.
+	// +optional
+	AcceptFormats []ImageFormat `json:"acceptFormats,omitempty"`
 }
 
 type SecretStatus struct {
