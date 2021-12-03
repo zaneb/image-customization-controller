@@ -13,14 +13,21 @@ import (
 )
 
 type rhcosImageProvider struct {
-	ImageHandler imagehandler.ImageHandler
-	EnvInputs    *env.EnvInputs
+	ImageHandler   imagehandler.ImageHandler
+	EnvInputs      *env.EnvInputs
+	RegistriesConf []byte
 }
 
 func NewRHCOSImageProvider(imageServer imagehandler.ImageHandler, inputs *env.EnvInputs) imageprovider.ImageProvider {
+	registries, err := inputs.RegistriesConf()
+	if err != nil {
+		panic(err)
+	}
+
 	return &rhcosImageProvider{
-		ImageHandler: imageServer,
-		EnvInputs:    inputs,
+		ImageHandler:   imageServer,
+		EnvInputs:      inputs,
+		RegistriesConf: registries,
 	}
 }
 
@@ -40,7 +47,7 @@ func (ip *rhcosImageProvider) SupportsFormat(format metal3.ImageFormat) bool {
 func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.NetworkData) ([]byte, error) {
 	nmstateData := networkData["nmstate"]
 
-	return ignition.New(nmstateData, []byte{},
+	return ignition.New(nmstateData, ip.RegistriesConf,
 		ip.EnvInputs.IronicBaseURL,
 		ip.EnvInputs.IronicAgentImage,
 		ip.EnvInputs.IronicAgentPullSecret,
