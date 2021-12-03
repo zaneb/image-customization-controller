@@ -32,9 +32,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	metal3iov1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	metal3iocontroller "github.com/openshift/image-customization-controller/controllers/metal3.io"
+	metal3iocontroller "github.com/metal3-io/baremetal-operator/controllers/metal3.io"
 	"github.com/openshift/image-customization-controller/pkg/env"
 	"github.com/openshift/image-customization-controller/pkg/imagehandler"
+	"github.com/openshift/image-customization-controller/pkg/imageprovider"
 	"github.com/openshift/image-customization-controller/pkg/version"
 	// +kubebuilder:scaffold:imports
 )
@@ -77,12 +78,11 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 	}
 
 	imgReconciler := metal3iocontroller.PreprovisioningImageReconciler{
-		Client:       mgr.GetClient(),
-		Log:          ctrl.Log.WithName("controllers").WithName("PreprovisioningImage"),
-		APIReader:    mgr.GetAPIReader(),
-		Scheme:       mgr.GetScheme(),
-		ImageHandler: imageServer,
-		EnvInputs:    envInputs,
+		Client:        mgr.GetClient(),
+		Log:           ctrl.Log.WithName("controllers").WithName("PreprovisioningImage"),
+		APIReader:     mgr.GetAPIReader(),
+		Scheme:        mgr.GetScheme(),
+		ImageProvider: imageprovider.NewRHCOSImageProvider(imageServer, envInputs),
 	}
 	if err = (&imgReconciler).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PreprovisioningImage")

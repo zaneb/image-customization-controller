@@ -15,7 +15,6 @@ limitations under the License.
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"io/ioutil"
 	"net/http"
@@ -36,33 +35,18 @@ import (
 	// +kubebuilder:scaffold:imports
 )
 
-const jsonImageMappingFileName = "images.json"
-
 var (
 	log = ctrl.Log.WithName("static-server")
 )
 
 func loadStaticNMState(env *env.EnvInputs, nmstateDir string, imageServer imagehandler.ImageHandler) error {
-	imageMapping := map[string]string{}
-	imageMappingFile := path.Join(nmstateDir, jsonImageMappingFileName)
-
-	b, err := os.ReadFile(imageMappingFile)
-	if err != nil {
-		log.Info("problem reading %s : %w", imageMappingFile, err)
-	} else {
-		err = json.Unmarshal(b, &imageMapping)
-		if err != nil {
-			return errors.WithMessagef(err, "problem parsing %s", imageMappingFile)
-		}
-	}
-
 	files, err := ioutil.ReadDir(nmstateDir)
 	if err != nil {
 		return errors.WithMessagef(err, "problem reading %s", nmstateDir)
 	}
 
 	for _, f := range files {
-		if f.IsDir() || f.Name() == jsonImageMappingFileName {
+		if f.IsDir() {
 			continue
 		}
 		b, err := os.ReadFile(path.Join(nmstateDir, f.Name()))
@@ -80,17 +64,16 @@ func loadStaticNMState(env *env.EnvInputs, nmstateDir string, imageServer imageh
 			return errors.WithMessagef(err, "problem generating ignition %s", f.Name())
 		}
 
-		imageName, ok := imageMapping[f.Name()]
-		if !ok {
-			imageName = strings.Replace(f.Name(), ".yaml", ".iso", 1) // master-1.yaml -> master-1.iso
-			log.Info("image mapping not available, using image", "name", imageName)
-		}
+		for _, suffix := range []string{".iso", ".initramfs"} {
+			imageName := strings.TrimSuffix(f.Name(), ".yaml") + suffix
 
-		url, err := imageServer.ServeImage(imageName, ign, false)
-		if err != nil {
-			return err
+			isInitramfs := !strings.HasSuffix(imageName, ".iso")
+			url, err := imageServer.ServeImage(imageName, ign, isInitramfs, true)
+			if err != nil {
+				return err
+			}
+			log.Info("serving", "image", imageName, "url", url)
 		}
-		log.Info("serving", "image", imageName, "url", url)
 	}
 	return nil
 }

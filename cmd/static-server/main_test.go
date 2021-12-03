@@ -41,10 +41,11 @@ func (f *fakeImageFileSystem) Seek(offset int64, whence int) (int64, error) { re
 func (f *fakeImageFileSystem) Readdir(n int) ([]fs.FileInfo, error)         { return nil, nil }
 func (f *fakeImageFileSystem) Open(name string) (http.File, error)          { return nil, nil }
 func (f *fakeImageFileSystem) FileSystem() http.FileSystem                  { return f }
-func (f *fakeImageFileSystem) ServeImage(name string, ignitionContent []byte, initrd bool) (string, error) {
+func (f *fakeImageFileSystem) ServeImage(name string, ignitionContent []byte, initrd, static bool) (string, error) {
 	f.imagesServed = append(f.imagesServed, name)
 	return "", nil
 }
+func (f *fakeImageFileSystem) RemoveImage(name string) {}
 
 func TestLoadStaticNMState(t *testing.T) {
 	fifs := &fakeImageFileSystem{imagesServed: []string{}}
@@ -55,7 +56,7 @@ func TestLoadStaticNMState(t *testing.T) {
 	if err := loadStaticNMState(env, "../../test/data", fifs); err != nil {
 		t.Errorf("loadStaticNMState() error = %v", err)
 	}
-	if !reflect.DeepEqual(fifs.imagesServed, []string{"master-0.iso", "master-1.iso", "master-2.iso"}) {
+	if !reflect.DeepEqual(fifs.imagesServed, []string{"nm0.iso", "nm0.initramfs", "nm1.iso", "nm1.initramfs", "nm2.iso", "nm2.initramfs"}) {
 		t.Errorf("loadStaticNMState() images = %v", fifs.imagesServed)
 	}
 }
