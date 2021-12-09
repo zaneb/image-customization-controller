@@ -58,12 +58,15 @@ func loadStaticNMState(env *env.EnvInputs, nmstateDir string, imageServer imageh
 		if err != nil {
 			return errors.WithMessagef(err, "problem reading %s", path.Join(nmstateDir, f.Name()))
 		}
-		igBuilder := ignition.New(b, registries,
+		igBuilder, err := ignition.New(b, registries,
 			env.IronicBaseURL,
 			env.IronicAgentImage,
 			env.IronicAgentPullSecret,
 			env.IronicRAMDiskSSHKey,
 		)
+		if err != nil {
+			return errors.WithMessage(err, "failed to configure ignition")
+		}
 		ign, err := igBuilder.Generate()
 		if err != nil {
 			return errors.WithMessagef(err, "problem generating ignition %s", f.Name())

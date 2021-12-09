@@ -27,7 +27,14 @@ type ignitionBuilder struct {
 	ironicRAMDiskSSHKey   string
 }
 
-func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey string) *ignitionBuilder {
+func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey string) (*ignitionBuilder, error) {
+	if ironicBaseURL == "" {
+		return nil, errors.New("ironicBaseURL is required")
+	}
+	if ironicAgentImage == "" {
+		return nil, errors.New("ironicAgentImage is required")
+	}
+
 	return &ignitionBuilder{
 		nmStateData:           nmStateData,
 		registriesConf:        registriesConf,
@@ -35,16 +42,10 @@ func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ir
 		ironicAgentImage:      ironicAgentImage,
 		ironicAgentPullSecret: ironicAgentPullSecret,
 		ironicRAMDiskSSHKey:   ironicRAMDiskSSHKey,
-	}
+	}, nil
 }
 
 func (b *ignitionBuilder) Generate() ([]byte, error) {
-	if b.ironicAgentImage == "" {
-		return nil, errors.New("ironicAgentImage is required")
-	}
-	if b.ironicBaseURL == "" {
-		return nil, errors.New("ironicBaseURL is required")
-	}
 	config := ignition_config_types_32.Config{
 		Ignition: ignition_config_types_32.Ignition{
 			Version: "3.2.0",

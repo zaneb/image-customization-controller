@@ -47,12 +47,17 @@ func (ip *rhcosImageProvider) SupportsFormat(format metal3.ImageFormat) bool {
 func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.NetworkData) ([]byte, error) {
 	nmstateData := networkData["nmstate"]
 
-	return ignition.New(nmstateData, ip.RegistriesConf,
+	builder, err := ignition.New(nmstateData, ip.RegistriesConf,
 		ip.EnvInputs.IronicBaseURL,
 		ip.EnvInputs.IronicAgentImage,
 		ip.EnvInputs.IronicAgentPullSecret,
 		ip.EnvInputs.IronicRAMDiskSSHKey,
-	).Generate()
+	)
+	if err != nil {
+		return nil, imageprovider.BuildInvalidError(err)
+	}
+
+	return builder.Generate()
 }
 
 func imageKey(data imageprovider.ImageData) string {
