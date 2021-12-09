@@ -127,13 +127,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	_, err = url.Parse(imagesPublishAddr)
+	publishURL, err := url.Parse(imagesPublishAddr)
 	if err != nil {
 		setupLog.Error(err, "imagesPublishAddr is not parsable")
 		os.Exit(1)
 	}
 
-	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), envInputs.DeployISO, envInputs.DeployInitrd, imagesPublishAddr)
+	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), envInputs.DeployISO, envInputs.DeployInitrd, publishURL)
 	http.Handle("/", http.FileServer(imageServer.FileSystem()))
 
 	go func() {

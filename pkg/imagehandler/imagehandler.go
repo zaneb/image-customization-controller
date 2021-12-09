@@ -14,6 +14,7 @@ limitations under the License.
 package imagehandler
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"sync"
@@ -27,7 +28,7 @@ import (
 type imageFileSystem struct {
 	isoFile       *baseIso
 	initramfsFile *baseInitramfs
-	baseURL       string
+	baseURL       *url.URL
 	keys          map[string]string
 	images        map[string]*imageFile
 	mu            *sync.Mutex
@@ -43,7 +44,7 @@ type ImageHandler interface {
 	RemoveImage(key string)
 }
 
-func NewImageHandler(logger logr.Logger, isoFile, initramfsFile, baseURL string) ImageHandler {
+func NewImageHandler(logger logr.Logger, isoFile, initramfsFile string, baseURL *url.URL) ImageHandler {
 	return &imageFileSystem{
 		log:           logger,
 		isoFile:       newBaseIso(isoFile),
@@ -105,12 +106,11 @@ func (f *imageFileSystem) ServeImage(key string, ignitionContent []byte, initram
 		}
 	}
 
-	u, err := url.Parse(f.baseURL)
+	p, err := url.Parse(fmt.Sprintf("/%s", name))
 	if err != nil {
 		return "", err
 	}
-	u.Path = name
-	return u.String(), nil
+	return f.baseURL.ResolveReference(p).String(), nil
 }
 
 func (f *imageFileSystem) imageFileByName(name string) *imageFile {
