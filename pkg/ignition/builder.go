@@ -25,6 +25,7 @@ type ignitionBuilder struct {
 	ironicAgentImage      string
 	ironicAgentPullSecret string
 	ironicRAMDiskSSHKey   string
+	networkKeyFiles       []byte
 }
 
 func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey string) (*ignitionBuilder, error) {
@@ -43,6 +44,22 @@ func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ir
 		ironicAgentPullSecret: ironicAgentPullSecret,
 		ironicRAMDiskSSHKey:   ironicRAMDiskSSHKey,
 	}, nil
+}
+
+func (b *ignitionBuilder) ProcessNetworkState() (error, string) {
+	if len(b.nmStateData) > 0 {
+		nmstatectl := exec.Command("nmstatectl", "gc", "-")
+		nmstatectl.Stdin = strings.NewReader(string(b.nmStateData))
+		out, err := nmstatectl.Output()
+		if err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				return err, string(ee.Stderr)
+			}
+			return err, ""
+		}
+		b.networkKeyFiles = out
+	}
+	return nil, ""
 }
 
 func (b *ignitionBuilder) Generate() ([]byte, error) {
@@ -87,15 +104,8 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 		config.Storage.Files = append(config.Storage.Files, registriesFile)
 	}
 
-	if len(b.nmStateData) > 0 {
-		nmstatectl := exec.Command("nmstatectl", "gc", "-")
-		nmstatectl.Stdin = strings.NewReader(string(b.nmStateData))
-		out, err := nmstatectl.Output()
-		if err != nil {
-			return nil, err
-		}
-
-		files, err := nmstateOutputToFiles(out)
+	if len(b.networkKeyFiles) > 0 {
+		files, err := nmstateOutputToFiles(b.networkKeyFiles)
 		if err != nil {
 			return nil, err
 		}

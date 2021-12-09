@@ -1,6 +1,7 @@
 package imageprovider
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/go-logr/logr"
@@ -55,6 +56,14 @@ func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.Netw
 	)
 	if err != nil {
 		return nil, imageprovider.BuildInvalidError(err)
+	}
+
+	err, message := builder.ProcessNetworkState()
+	if message != "" {
+		return nil, imageprovider.BuildInvalidError(errors.New(message))
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	return builder.Generate()
