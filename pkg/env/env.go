@@ -1,6 +1,11 @@
 package env
 
-import "github.com/kelseyhightower/envconfig"
+import (
+	"os"
+
+	"github.com/kelseyhightower/envconfig"
+	"github.com/pkg/errors"
+)
 
 type EnvInputs struct {
 	DeployISO             string `envconfig:"DEPLOY_ISO" required:"true"`
@@ -9,10 +14,24 @@ type EnvInputs struct {
 	IronicAgentImage      string `envconfig:"IRONIC_AGENT_IMAGE"`
 	IronicAgentPullSecret string `envconfig:"IRONIC_AGENT_PULL_SECRET"`
 	IronicRAMDiskSSHKey   string `envconfig:"IRONIC_RAMDISK_SSH_KEY"`
+	RegistriesConfPath    string `envconfig:"REGISTRIES_CONF_PATH"`
 }
 
 func New() (*EnvInputs, error) {
 	env := &EnvInputs{}
 	err := envconfig.Process("", env)
 	return env, err
+}
+
+func (env *EnvInputs) RegistriesConf() (data []byte, err error) {
+	if env.RegistriesConfPath == "" {
+		return
+	}
+
+	data, err = os.ReadFile(env.RegistriesConfPath)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to read registries.conf file %s",
+			env.RegistriesConfPath)
+	}
+	return
 }

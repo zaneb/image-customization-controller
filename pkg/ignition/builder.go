@@ -20,13 +20,14 @@ const (
 
 type ignitionBuilder struct {
 	nmStateData           []byte
+	registriesConf        []byte
 	ironicBaseURL         string
 	ironicAgentImage      string
 	ironicAgentPullSecret string
 	ironicRAMDiskSSHKey   string
 }
 
-func New(nmStateData []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey string) *ignitionBuilder {
+func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey string) *ignitionBuilder {
 	if ironicAgentImage == "" {
 		// https://github.com/openshift/ironic-image/blob/master/scripts/configure-coreos-ipa#L13
 		ironicAgentImage = "quay.io/dtantsur/ironic-agent" // TODO check
@@ -34,6 +35,7 @@ func New(nmStateData []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSec
 
 	return &ignitionBuilder{
 		nmStateData:           nmStateData,
+		registriesConf:        registriesConf,
 		ironicBaseURL:         ironicBaseURL,
 		ironicAgentImage:      ironicAgentImage,
 		ironicAgentPullSecret: ironicAgentPullSecret,
@@ -67,6 +69,14 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 				ignition_config_types_32.SSHAuthorizedKey(strings.TrimSpace(b.ironicRAMDiskSSHKey)),
 			},
 		})
+	}
+
+	if len(b.registriesConf) > 0 {
+		registriesFile := ignitionFileEmbed("/etc/containers/registries.conf",
+			0644,
+			b.registriesConf)
+
+		config.Storage.Files = append(config.Storage.Files, registriesFile)
 	}
 
 	if len(b.nmStateData) > 0 {
