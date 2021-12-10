@@ -85,8 +85,12 @@ func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkDa
 		return "", err
 	}
 
-	return ip.ImageHandler.ServeImage(imageKey(data), ignitionConfig,
+	url, err := ip.ImageHandler.ServeImage(imageKey(data), ignitionConfig,
 		data.Format == metal3.ImageFormatInitRD, false)
+	if errors.As(err, &imagehandler.InvalidBaseImageError{}) {
+		return "", imageprovider.BuildInvalidError(err)
+	}
+	return url, err
 }
 
 func (ip *rhcosImageProvider) DiscardImage(data imageprovider.ImageData) error {

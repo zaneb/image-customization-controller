@@ -23,6 +23,18 @@ import (
 	"github.com/google/uuid"
 )
 
+type InvalidBaseImageError struct {
+	cause error
+}
+
+func (ie InvalidBaseImageError) Error() string {
+	return "Base Image not available"
+}
+
+func (ie InvalidBaseImageError) Unwrap() error {
+	return ie.cause
+}
+
 // imageFileSystem is an http.FileSystem that creates a virtual filesystem of
 // host images.
 type imageFileSystem struct {
@@ -82,7 +94,7 @@ func (f *imageFileSystem) getNameForKey(key string) (name string, err error) {
 func (f *imageFileSystem) ServeImage(key string, ignitionContent []byte, initramfs, static bool) (string, error) {
 	size, err := f.getBaseImage(initramfs).Size()
 	if err != nil {
-		return "", err
+		return "", InvalidBaseImageError{cause: err}
 	}
 
 	f.mu.Lock()
@@ -95,6 +107,10 @@ func (f *imageFileSystem) ServeImage(key string, ignitionContent []byte, initram
 			return "", err
 		}
 	}
+	p, err := url.Parse(fmt.Sprintf("/%s", name))
+	if err != nil {
+		return "", err
+	}
 
 	if _, exists := f.images[key]; !exists {
 		f.keys[name] = key
@@ -106,10 +122,6 @@ func (f *imageFileSystem) ServeImage(key string, ignitionContent []byte, initram
 		}
 	}
 
-	p, err := url.Parse(fmt.Sprintf("/%s", name))
-	if err != nil {
-		return "", err
-	}
 	return f.baseURL.ResolveReference(p).String(), nil
 }
 
