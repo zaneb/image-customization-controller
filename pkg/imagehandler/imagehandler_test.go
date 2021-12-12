@@ -88,21 +88,36 @@ func TestNewImageHandler(t *testing.T) {
 	ifs.isoFile.size = 12345
 	ifs.initramfsFile.size = 12345
 
-	url1, err := handler.ServeImage("test-name-1", []byte{}, false, false)
+	url1, err := handler.ServeImage("test-key-1", []byte{}, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
-	_, err = handler.ServeImage("test-name-2", []byte{}, true, false)
+	url2, err := handler.ServeImage("test-key-2", []byte{}, true, false)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
-	url1again, err := handler.ServeImage("test-name-1", []byte{}, false, false)
+
+	name2 := url2[22:]
+	if ifs.imageFileByName(name2) == nil {
+		t.Errorf("can't look up image file \"%s\"", name2)
+	}
+
+	url1again, err := handler.ServeImage("test-key-1", []byte{}, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
 
 	if url1again != url1 {
 		t.Errorf("inconsistent URLs for same key: %s %s", url1, url1again)
+	}
+
+	handler.RemoveImage("test-key-1")
+	url1yetagain, err := handler.ServeImage("test-key-1", []byte{}, false, false)
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+	if url1yetagain == url1 {
+		t.Errorf("same URLs returned after removal: %s", url1yetagain)
 	}
 }
 
