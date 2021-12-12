@@ -49,6 +49,7 @@ func NewImageHandler(logger logr.Logger, isoFile, initramfsFile, baseURL string)
 		isoFile:       newBaseIso(isoFile),
 		initramfsFile: newBaseInitramfs(initramfsFile),
 		baseURL:       baseURL,
+		keys:          map[string]string{},
 		images:        map[string]*imageFile{},
 		mu:            &sync.Mutex{},
 	}
