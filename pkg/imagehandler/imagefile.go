@@ -36,11 +36,26 @@ type imageFile struct {
 var _ fs.File = &imageFile{}
 
 func (f *imageFile) Init(inputFile baseFile) error {
-	if f.imageReader == nil {
-		var err error
-		ignition := &isoeditor.IgnitionContent{Config: f.ignitionContent}
-		f.imageReader, err = inputFile.InsertIgnition(ignition)
+	if f.imageReader != nil {
+		return nil
+	}
+
+	var err error
+	ignition := &isoeditor.IgnitionContent{Config: f.ignitionContent}
+	f.imageReader, err = inputFile.InsertIgnition(ignition)
+	if err != nil {
+		return err
+	}
+	if f.initramfs {
+		size, err := f.imageReader.Seek(0, io.SeekEnd)
 		if err != nil {
+			f.Close()
+			return err
+		}
+		f.size = size
+		_, err = f.imageReader.Seek(0, io.SeekStart)
+		if err != nil {
+			f.Close()
 			return err
 		}
 	}
