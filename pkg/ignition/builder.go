@@ -73,7 +73,7 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 
 	if len(b.registriesConf) > 0 {
 		registriesFile := ignitionFileEmbed("/etc/containers/registries.conf",
-			0644, false,
+			0644, true,
 			b.registriesConf)
 
 		config.Storage.Files = append(config.Storage.Files, registriesFile)
