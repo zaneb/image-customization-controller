@@ -17,10 +17,10 @@ func toDataUrl(text []byte) string {
 	return data.String()
 }
 
-func ignitionFileEmbed(path string, mode int, data []byte) ignition_types.File {
+func ignitionFileEmbed(path string, mode int, overwrite bool, data []byte) ignition_types.File {
 	source := toDataUrl(data)
 	return ignition_types.File{
-		Node: ignition_types.Node{Path: path},
+		Node: ignition_types.Node{Path: path, Overwrite: &overwrite},
 		FileEmbedded1: ignition_types.FileEmbedded1{
 			Contents: ignition_types.Resource{Source: &source},
 			Mode:     &mode,

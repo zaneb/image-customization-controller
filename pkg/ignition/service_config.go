@@ -21,7 +21,7 @@ inspection_collectors = default,extra-hardware,logs
 inspection_dhcp_all_interfaces = True
 `
 	contents := fmt.Sprintf(template, b.ironicBaseURL, b.ironicBaseURL, ironicInspectorVlanInterfaces)
-	return ignitionFileEmbed("/etc/ironic-python-agent.conf", 0644, []byte(contents))
+	return ignitionFileEmbed("/etc/ironic-python-agent.conf", 0644, false, []byte(contents))
 }
 
 func (b *ignitionBuilder) ironicAgentService() ignition_config_types_32.Unit {
