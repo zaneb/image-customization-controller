@@ -71,6 +71,15 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 		})
 	}
 
+	config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
+		"/etc/NetworkManager/conf.d/clientid.conf",
+		0644, false,
+		[]byte("[connection]\nipv6.dhcp-duid=ll\nipv6.dhcp-iaid=mac")))
+	config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
+		"/etc/NetworkManager/dispatcher.d/01-hostname",
+		0744, false,
+		[]byte("[[ \"$DHCP6_FQDN_FQDN\" =~ \".\" ]] && hostnamectl set-hostname --static --transient $DHCP6_FQDN_FQDN")))
+
 	if len(b.registriesConf) > 0 {
 		registriesFile := ignitionFileEmbed("/etc/containers/registries.conf",
 			0644, true,
