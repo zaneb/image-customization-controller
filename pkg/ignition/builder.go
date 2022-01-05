@@ -28,11 +28,6 @@ type ignitionBuilder struct {
 }
 
 func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey string) *ignitionBuilder {
-	if ironicAgentImage == "" {
-		// https://github.com/openshift/ironic-image/blob/master/scripts/configure-coreos-ipa#L13
-		ironicAgentImage = "quay.io/dtantsur/ironic-agent" // TODO check
-	}
-
 	return &ignitionBuilder{
 		nmStateData:           nmStateData,
 		registriesConf:        registriesConf,
@@ -44,6 +39,9 @@ func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ir
 }
 
 func (b *ignitionBuilder) Generate() ([]byte, error) {
+	if b.ironicAgentImage == "" {
+		return nil, errors.New("ironicAgentImage is required")
+	}
 	if b.ironicBaseURL == "" {
 		return nil, errors.New("ironicBaseURL is required")
 	}

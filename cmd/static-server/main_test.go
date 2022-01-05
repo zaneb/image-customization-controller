@@ -50,8 +50,9 @@ func (f *fakeImageFileSystem) RemoveImage(name string) {}
 func TestLoadStaticNMState(t *testing.T) {
 	fifs := &fakeImageFileSystem{imagesServed: []string{}}
 	env := &env.EnvInputs{
-		DeployISO:     "foo.iso",
-		IronicBaseURL: "http://example.com",
+		DeployISO:        "foo.iso",
+		IronicBaseURL:    "http://example.com",
+		IronicAgentImage: "quay.io/tantsur/ironic-agent",
 	}
 	if err := loadStaticNMState(env, "../../test/data", fifs); err != nil {
 		t.Errorf("loadStaticNMState() error = %v", err)

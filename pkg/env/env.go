@@ -11,7 +11,7 @@ type EnvInputs struct {
 	DeployISO             string `envconfig:"DEPLOY_ISO" required:"true"`
 	DeployInitrd          string `envconfig:"DEPLOY_INITRD" required:"true"`
 	IronicBaseURL         string `envconfig:"IRONIC_BASE_URL" required:"true"`
-	IronicAgentImage      string `envconfig:"IRONIC_AGENT_IMAGE"`
+	IronicAgentImage      string `envconfig:"IRONIC_AGENT_IMAGE" required:"true"`
 	IronicAgentPullSecret string `envconfig:"IRONIC_AGENT_PULL_SECRET"`
 	IronicRAMDiskSSHKey   string `envconfig:"IRONIC_RAMDISK_SSH_KEY"`
 	RegistriesConfPath    string `envconfig:"REGISTRIES_CONF_PATH"`
