@@ -63,6 +63,7 @@ func loadStaticNMState(env *env.EnvInputs, nmstateDir string, imageServer imageh
 			env.IronicAgentImage,
 			env.IronicAgentPullSecret,
 			env.IronicRAMDiskSSHKey,
+			env.IpOptions,
 		)
 		if err != nil {
 			return errors.WithMessage(err, "failed to configure ignition")

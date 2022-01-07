@@ -26,9 +26,10 @@ type ignitionBuilder struct {
 	ironicAgentPullSecret string
 	ironicRAMDiskSSHKey   string
 	networkKeyFiles       []byte
+	ipOptions             string
 }
 
-func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey string) (*ignitionBuilder, error) {
+func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey, ipOptions string) (*ignitionBuilder, error) {
 	if ironicBaseURL == "" {
 		return nil, errors.New("ironicBaseURL is required")
 	}
@@ -43,6 +44,7 @@ func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ir
 		ironicAgentImage:      ironicAgentImage,
 		ironicAgentPullSecret: ironicAgentPullSecret,
 		ironicRAMDiskSSHKey:   ironicRAMDiskSSHKey,
+		ipOptions:             ipOptions,
 	}, nil
 }
 
