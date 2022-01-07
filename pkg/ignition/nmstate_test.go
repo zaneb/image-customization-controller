@@ -11,7 +11,7 @@ import (
 
 func TestNMStateOutputToFiles(t *testing.T) {
 	expectedMode := 0600
-	expectedOverwrite := false
+	expectedOverwrite := true
 	tests := []struct {
 		name            string
 		generatedConfig []byte
