@@ -16,7 +16,7 @@ package main
 
 import (
 	"flag"
-	"io/ioutil"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -39,13 +39,24 @@ var (
 	log = ctrl.Log.WithName("static-server")
 )
 
-func loadStaticNMState(env *env.EnvInputs, nmstateDir string, imageServer imagehandler.ImageHandler) error {
+func loadStaticNMState(fsys fs.FS, env *env.EnvInputs, nmstateDir string, imageServer imagehandler.ImageHandler) error {
 	registries, err := env.RegistriesConf()
 	if err != nil {
 		return err
 	}
 
-	files, err := ioutil.ReadDir(nmstateDir)
+	// If not defined via env var, look for the mounted secret file
+	pullSecret := env.IronicAgentPullSecret
+	if env.IronicAgentPullSecret == "" {
+		pullSecretRaw, err := fs.ReadFile(fsys, "run/secrets/pull-secret")
+		if err != nil {
+			return errors.Wrap(err, "unable to read secret")
+		}
+		pullSecret = string(pullSecretRaw)
+	}
+
+	nmstateDir = strings.Trim(nmstateDir, "/")
+	files, err := fs.ReadDir(fsys, nmstateDir)
 	if err != nil {
 		return errors.WithMessagef(err, "problem reading %s", nmstateDir)
 	}
@@ -54,14 +65,14 @@ func loadStaticNMState(env *env.EnvInputs, nmstateDir string, imageServer imageh
 		if f.IsDir() {
 			continue
 		}
-		b, err := os.ReadFile(path.Join(nmstateDir, f.Name()))
+		b, err := fs.ReadFile(fsys, path.Join(nmstateDir, f.Name()))
 		if err != nil {
 			return errors.WithMessagef(err, "problem reading %s", path.Join(nmstateDir, f.Name()))
 		}
 		igBuilder := ignition.New(b, registries,
 			env.IronicBaseURL,
 			env.IronicAgentImage,
-			env.IronicAgentPullSecret,
+			pullSecret,
 			env.IronicRAMDiskSSHKey,
 		)
 		ign, err := igBuilder.Generate()
@@ -121,7 +132,7 @@ func main() {
 	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), env.DeployISO, env.DeployInitrd, imagesPublishAddr)
 	http.Handle("/", http.FileServer(imageServer.FileSystem()))
 
-	if err := loadStaticNMState(env, nmstateDir, imageServer); err != nil {
+	if err := loadStaticNMState(os.DirFS("/"), env, nmstateDir, imageServer); err != nil {
 		log.Error(err, "problem loading static ignitions")
 		os.Exit(1)
 	}
