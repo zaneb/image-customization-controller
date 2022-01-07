@@ -74,6 +74,21 @@ func (b *ignitionBuilder) ProcessNetworkState() (error, string) {
 }
 
 func (b *ignitionBuilder) Generate() ([]byte, error) {
+	netFiles := []ignition_config_types_32.File{}
+	if len(b.nmStateData) > 0 {
+		nmstatectl := exec.Command("nmstatectl", "gc", "-")
+		nmstatectl.Stdin = strings.NewReader(string(b.nmStateData))
+		out, err := nmstatectl.Output()
+		if err != nil {
+			return nil, err
+		}
+
+		netFiles, err = nmstateOutputToFiles(out)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	config := ignition_config_types_32.Config{
 		Ignition: ignition_config_types_32.Ignition{
 			Version: "3.2.0",
@@ -82,9 +97,11 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 			Files: []ignition_config_types_32.File{b.ironicPythonAgentConf()},
 		},
 		Systemd: ignition_config_types_32.Systemd{
-			Units: []ignition_config_types_32.Unit{b.ironicAgentService()},
+			Units: []ignition_config_types_32.Unit{b.ironicAgentService(len(netFiles) > 0)},
 		},
 	}
+	config.Storage.Files = append(config.Storage.Files, netFiles...)
+
 	if b.ironicAgentPullSecret != "" {
 		config.Storage.Files = append(config.Storage.Files, b.authFile())
 	}
@@ -118,14 +135,6 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 			b.registriesConf)
 
 		config.Storage.Files = append(config.Storage.Files, registriesFile)
-	}
-
-	if len(b.networkKeyFiles) > 0 {
-		files, err := nmstateOutputToFiles(b.networkKeyFiles)
-		if err != nil {
-			return nil, err
-		}
-		config.Storage.Files = append(config.Storage.Files, files...)
 	}
 
 	report := config.Storage.Validate(vpath.ContextPath{})
