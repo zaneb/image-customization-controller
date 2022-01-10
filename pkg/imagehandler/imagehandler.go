@@ -14,6 +14,7 @@ limitations under the License.
 package imagehandler
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"sync"
@@ -22,12 +23,24 @@ import (
 	"github.com/google/uuid"
 )
 
+type InvalidBaseImageError struct {
+	cause error
+}
+
+func (ie InvalidBaseImageError) Error() string {
+	return "Base Image not available"
+}
+
+func (ie InvalidBaseImageError) Unwrap() error {
+	return ie.cause
+}
+
 // imageFileSystem is an http.FileSystem that creates a virtual filesystem of
 // host images.
 type imageFileSystem struct {
 	isoFile       *baseIso
 	initramfsFile *baseInitramfs
-	baseURL       string
+	baseURL       *url.URL
 	keys          map[string]string
 	images        map[string]*imageFile
 	mu            *sync.Mutex
@@ -43,7 +56,7 @@ type ImageHandler interface {
 	RemoveImage(key string)
 }
 
-func NewImageHandler(logger logr.Logger, isoFile, initramfsFile, baseURL string) ImageHandler {
+func NewImageHandler(logger logr.Logger, isoFile, initramfsFile string, baseURL *url.URL) ImageHandler {
 	return &imageFileSystem{
 		log:           logger,
 		isoFile:       newBaseIso(isoFile),
@@ -81,7 +94,7 @@ func (f *imageFileSystem) getNameForKey(key string) (name string, err error) {
 func (f *imageFileSystem) ServeImage(key string, ignitionContent []byte, initramfs, static bool) (string, error) {
 	size, err := f.getBaseImage(initramfs).Size()
 	if err != nil {
-		return "", err
+		return "", InvalidBaseImageError{cause: err}
 	}
 
 	f.mu.Lock()
@@ -94,6 +107,10 @@ func (f *imageFileSystem) ServeImage(key string, ignitionContent []byte, initram
 			return "", err
 		}
 	}
+	p, err := url.Parse(fmt.Sprintf("/%s", name))
+	if err != nil {
+		return "", err
+	}
 
 	if _, exists := f.images[key]; !exists {
 		f.keys[name] = key
@@ -105,12 +122,7 @@ func (f *imageFileSystem) ServeImage(key string, ignitionContent []byte, initram
 		}
 	}
 
-	u, err := url.Parse(f.baseURL)
-	if err != nil {
-		return "", err
-	}
-	u.Path = name
-	return u.String(), nil
+	return f.baseURL.ResolveReference(p).String(), nil
 }
 
 func (f *imageFileSystem) imageFileByName(name string) *imageFile {

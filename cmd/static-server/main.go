@@ -58,12 +58,18 @@ func loadStaticNMState(env *env.EnvInputs, nmstateDir string, imageServer imageh
 		if err != nil {
 			return errors.WithMessagef(err, "problem reading %s", path.Join(nmstateDir, f.Name()))
 		}
-		igBuilder := ignition.New(b, registries,
+		igBuilder, err := ignition.New(b, registries,
 			env.IronicBaseURL,
 			env.IronicAgentImage,
 			env.IronicAgentPullSecret,
 			env.IronicRAMDiskSSHKey,
 		)
+		if err != nil {
+			return errors.WithMessage(err, "failed to configure ignition")
+		}
+		if err, _ := igBuilder.ProcessNetworkState(); err != nil {
+			return errors.WithMessage(err, "failed to convert nmstate data")
+		}
 		ign, err := igBuilder.Generate()
 		if err != nil {
 			return errors.WithMessagef(err, "problem generating ignition %s", f.Name())
@@ -107,7 +113,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	_, err = url.Parse(imagesPublishAddr)
+	publishURL, err := url.Parse(imagesPublishAddr)
 	if err != nil {
 		log.Error(err, "imagesPublishAddr is not parsable")
 		os.Exit(1)
@@ -118,7 +124,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), env.DeployISO, env.DeployInitrd, imagesPublishAddr)
+	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), env.DeployISO, env.DeployInitrd, publishURL)
 	http.Handle("/", http.FileServer(imageServer.FileSystem()))
 
 	if err := loadStaticNMState(env, nmstateDir, imageServer); err != nil {

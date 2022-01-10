@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -42,11 +43,13 @@ func TestImageHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	baseURL, _ := url.Parse("http://localhost:8080")
+
 	rr := httptest.NewRecorder()
 	imageServer := &imageFileSystem{
 		log:     zap.New(zap.UseDevMode(true)),
 		isoFile: &baseIso{baseFileData{filename: "dummyfile.iso", size: 12345}},
-		baseURL: "http://localhost:8080",
+		baseURL: baseURL,
 		keys: map[string]string{
 			"host-xyz-45-uuid": "host-xyz-45.iso",
 		},
@@ -79,10 +82,14 @@ func TestImageHandler(t *testing.T) {
 }
 
 func TestNewImageHandler(t *testing.T) {
+	baseUrl, err := url.Parse("http://base.test:1234")
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
 	handler := NewImageHandler(zap.New(zap.UseDevMode(true)),
 		"dummyfile.iso",
 		"dummyfile.initramfs",
-		"http://base.test:1234")
+		baseUrl)
 
 	ifs := handler.(*imageFileSystem)
 	ifs.isoFile.size = 12345
@@ -122,10 +129,14 @@ func TestNewImageHandler(t *testing.T) {
 }
 
 func TestNewImageHandlerStatic(t *testing.T) {
+	baseUrl, err := url.Parse("http://base.test:1234")
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
 	handler := NewImageHandler(zap.New(zap.UseDevMode(true)),
 		"dummyfile.iso",
 		"dummyfile.initramfs",
-		"http://base.test:1234")
+		baseUrl)
 
 	ifs := handler.(*imageFileSystem)
 	ifs.isoFile.size = 12345

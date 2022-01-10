@@ -15,10 +15,13 @@ func TestGenerateRegistries(t *testing.T) {
   [[registry.mirror]]
     location = "virthost.ostest.test.metalkube.org:5000/localimages/local-release-image"
 `
-	builder := New([]byte{}, []byte(registries),
+	builder, err := New([]byte{}, []byte(registries),
 		"http://ironic.example.com",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
 		"", "")
+	if err != nil {
+		t.Fatalf("Unexpected error %v", err)
+	}
 
 	ignition, err := builder.Generate()
 	if err != nil {

@@ -1,6 +1,7 @@
 package imageprovider
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/go-logr/logr"
@@ -47,12 +48,25 @@ func (ip *rhcosImageProvider) SupportsFormat(format metal3.ImageFormat) bool {
 func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.NetworkData) ([]byte, error) {
 	nmstateData := networkData["nmstate"]
 
-	return ignition.New(nmstateData, ip.RegistriesConf,
+	builder, err := ignition.New(nmstateData, ip.RegistriesConf,
 		ip.EnvInputs.IronicBaseURL,
 		ip.EnvInputs.IronicAgentImage,
 		ip.EnvInputs.IronicAgentPullSecret,
 		ip.EnvInputs.IronicRAMDiskSSHKey,
-	).Generate()
+	)
+	if err != nil {
+		return nil, imageprovider.BuildInvalidError(err)
+	}
+
+	err, message := builder.ProcessNetworkState()
+	if message != "" {
+		return nil, imageprovider.BuildInvalidError(errors.New(message))
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return builder.Generate()
 }
 
 func imageKey(data imageprovider.ImageData) string {
@@ -71,8 +85,12 @@ func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkDa
 		return "", err
 	}
 
-	return ip.ImageHandler.ServeImage(imageKey(data), ignitionConfig,
+	url, err := ip.ImageHandler.ServeImage(imageKey(data), ignitionConfig,
 		data.Format == metal3.ImageFormatInitRD, false)
+	if errors.As(err, &imagehandler.InvalidBaseImageError{}) {
+		return "", imageprovider.BuildInvalidError(err)
+	}
+	return url, err
 }
 
 func (ip *rhcosImageProvider) DiscardImage(data imageprovider.ImageData) error {

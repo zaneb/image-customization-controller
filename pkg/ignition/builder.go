@@ -25,9 +25,17 @@ type ignitionBuilder struct {
 	ironicAgentImage      string
 	ironicAgentPullSecret string
 	ironicRAMDiskSSHKey   string
+	networkKeyFiles       []byte
 }
 
-func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey string) *ignitionBuilder {
+func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey string) (*ignitionBuilder, error) {
+	if ironicBaseURL == "" {
+		return nil, errors.New("ironicBaseURL is required")
+	}
+	if ironicAgentImage == "" {
+		return nil, errors.New("ironicAgentImage is required")
+	}
+
 	return &ignitionBuilder{
 		nmStateData:           nmStateData,
 		registriesConf:        registriesConf,
@@ -35,16 +43,26 @@ func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ir
 		ironicAgentImage:      ironicAgentImage,
 		ironicAgentPullSecret: ironicAgentPullSecret,
 		ironicRAMDiskSSHKey:   ironicRAMDiskSSHKey,
+	}, nil
+}
+
+func (b *ignitionBuilder) ProcessNetworkState() (error, string) {
+	if len(b.nmStateData) > 0 {
+		nmstatectl := exec.Command("nmstatectl", "gc", "-")
+		nmstatectl.Stdin = strings.NewReader(string(b.nmStateData))
+		out, err := nmstatectl.Output()
+		if err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				return err, string(ee.Stderr)
+			}
+			return err, ""
+		}
+		b.networkKeyFiles = out
 	}
+	return nil, ""
 }
 
 func (b *ignitionBuilder) Generate() ([]byte, error) {
-	if b.ironicAgentImage == "" {
-		return nil, errors.New("ironicAgentImage is required")
-	}
-	if b.ironicBaseURL == "" {
-		return nil, errors.New("ironicBaseURL is required")
-	}
 	config := ignition_config_types_32.Config{
 		Ignition: ignition_config_types_32.Ignition{
 			Version: "3.2.0",
@@ -86,15 +104,8 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 		config.Storage.Files = append(config.Storage.Files, registriesFile)
 	}
 
-	if len(b.nmStateData) > 0 {
-		nmstatectl := exec.Command("nmstatectl", "gc", "-")
-		nmstatectl.Stdin = strings.NewReader(string(b.nmStateData))
-		out, err := nmstatectl.Output()
-		if err != nil {
-			return nil, err
-		}
-
-		files, err := nmstateOutputToFiles(out)
+	if len(b.networkKeyFiles) > 0 {
+		files, err := nmstateOutputToFiles(b.networkKeyFiles)
 		if err != nil {
 			return nil, err
 		}
