@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"reflect"
 	"testing"
+	"testing/fstest"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 
@@ -54,7 +55,15 @@ func TestLoadStaticNMState(t *testing.T) {
 		IronicBaseURL:    "http://example.com",
 		IronicAgentImage: "quay.io/tantsur/ironic-agent",
 	}
-	if err := loadStaticNMState(env, "../../test/data", fifs); err != nil {
+
+	fs := fstest.MapFS{
+		"run/secrets/pull-secret": {},
+		"tmp/nmstate/nm0":         {},
+		"tmp/nmstate/nm1":         {},
+		"tmp/nmstate/nm2":         {},
+	}
+
+	if err := loadStaticNMState(fs, env, "/tmp/nmstate/", fifs); err != nil {
 		t.Errorf("loadStaticNMState() error = %v", err)
 	}
 	if !reflect.DeepEqual(fifs.imagesServed, []string{"nm0.iso", "nm0.initramfs", "nm1.iso", "nm1.initramfs", "nm2.iso", "nm2.initramfs"}) {
