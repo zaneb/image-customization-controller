@@ -53,6 +53,7 @@ func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.Netw
 		ip.EnvInputs.IronicAgentImage,
 		ip.EnvInputs.IronicAgentPullSecret,
 		ip.EnvInputs.IronicRAMDiskSSHKey,
+		ip.EnvInputs.IpOptions,
 	)
 	if err != nil {
 		return nil, imageprovider.BuildInvalidError(err)

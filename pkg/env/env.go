@@ -15,6 +15,7 @@ type EnvInputs struct {
 	IronicAgentPullSecret string `envconfig:"IRONIC_AGENT_PULL_SECRET"`
 	IronicRAMDiskSSHKey   string `envconfig:"IRONIC_RAMDISK_SSH_KEY"`
 	RegistriesConfPath    string `envconfig:"REGISTRIES_CONF_PATH"`
+	IpOptions             string `envconfig:"IP_OPTIONS"`
 }
 
 func New() (*EnvInputs, error) {

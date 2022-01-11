@@ -74,6 +74,7 @@ func loadStaticNMState(fsys fs.FS, env *env.EnvInputs, nmstateDir string, imageS
 			env.IronicAgentImage,
 			pullSecret,
 			env.IronicRAMDiskSSHKey,
+			env.IpOptions,
 		)
 		if err != nil {
 			return errors.WithMessage(err, "failed to configure ignition")
