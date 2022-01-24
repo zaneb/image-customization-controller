@@ -16,6 +16,9 @@ type EnvInputs struct {
 	IronicRAMDiskSSHKey   string `envconfig:"IRONIC_RAMDISK_SSH_KEY"`
 	RegistriesConfPath    string `envconfig:"REGISTRIES_CONF_PATH"`
 	IpOptions             string `envconfig:"IP_OPTIONS"`
+	HttpProxy             string `envconfig:"HTTP_PROXY"`
+	HttpsProxy            string `envconfig:"HTTPS_PROXY"`
+	NoProxy               string `envconfig:"NO_PROXY"`
 }
 
 func New() (*EnvInputs, error) {
