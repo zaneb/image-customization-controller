@@ -3,6 +3,8 @@ package ignition
 import (
 	"strings"
 	"testing"
+
+	"github.com/openshift/image-customization-controller/pkg/env"
 )
 
 func TestGenerateRegistries(t *testing.T) {
@@ -18,7 +20,7 @@ func TestGenerateRegistries(t *testing.T) {
 	builder, err := New([]byte{}, []byte(registries),
 		"http://ironic.example.com",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
-		"", "", "", "", "", "", "virthost")
+		"", "", "", env.ProxyConfig{}, "virthost")
 	if err != nil {
 		t.Fatalf("Unexpected error %v", err)
 	}
@@ -38,7 +40,7 @@ func TestDefaultEnv(t *testing.T) {
 	builder, _ := New([]byte{}, []byte{},
 		"http://ironic.example.com",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
-		"", "", "", "", "", "", "virthost")
+		"", "", "", env.ProxyConfig{}, "virthost")
 
 	envConfig := builder.defaultEnv()
 	if string(builder.defaultEnv()) != "[Manager]\n" {
@@ -48,7 +50,11 @@ func TestDefaultEnv(t *testing.T) {
 	builder, _ = New([]byte{}, []byte{},
 		"http://ironic.example.com",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
-		"", "", "", "http.example.com", "https.example.com", "no_proxy.example.com", "virthost")
+		"", "", "", env.ProxyConfig{
+			HttpProxy:  "http.example.com",
+			HttpsProxy: "https.example.com",
+			NoProxy:    "no_proxy.example.com",
+		}, "virthost")
 
 	envConfig = builder.defaultEnv()
 	expected := `[Manager]
@@ -63,7 +69,9 @@ DefaultEnvironment=NO_PROXY="no_proxy.example.com"
 	builder, _ = New([]byte{}, []byte{},
 		"http://ironic.example.com",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
-		"", "", "", "", "https.example.com", "", "virthost")
+		"", "", "", env.ProxyConfig{
+			HttpsProxy: "https.example.com",
+		}, "virthost")
 
 	envConfig = builder.defaultEnv()
 	expected = `[Manager]
