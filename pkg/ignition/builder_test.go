@@ -33,3 +33,43 @@ func TestGenerateRegistries(t *testing.T) {
 		t.Fatalf("Registries data not found in ignition:\n%s", string(ignition))
 	}
 }
+
+func TestDefaultEnv(t *testing.T) {
+	builder, _ := New([]byte{}, []byte{},
+		"http://ironic.example.com",
+		"quay.io/openshift-release-dev/ironic-ipa-image",
+		"", "", "", "", "", "", "virthost")
+
+	envConfig := builder.defaultEnv()
+	if string(builder.defaultEnv()) != "[Manager]\n" {
+		t.Errorf("Unexpected default env file:\n%s", envConfig)
+	}
+
+	builder, _ = New([]byte{}, []byte{},
+		"http://ironic.example.com",
+		"quay.io/openshift-release-dev/ironic-ipa-image",
+		"", "", "", "http.example.com", "https.example.com", "no_proxy.example.com", "virthost")
+
+	envConfig = builder.defaultEnv()
+	expected := `[Manager]
+DefaultEnvironment=HTTP_PROXY="http.example.com"
+DefaultEnvironment=HTTPS_PROXY="https.example.com"
+DefaultEnvironment=NO_PROXY="no_proxy.example.com"
+`
+	if string(envConfig) != expected {
+		t.Errorf("Invalid default env file with all vars set:\n%s", envConfig)
+	}
+
+	builder, _ = New([]byte{}, []byte{},
+		"http://ironic.example.com",
+		"quay.io/openshift-release-dev/ironic-ipa-image",
+		"", "", "", "", "https.example.com", "", "virthost")
+
+	envConfig = builder.defaultEnv()
+	expected = `[Manager]
+DefaultEnvironment=HTTPS_PROXY="https.example.com"
+`
+	if string(envConfig) != expected {
+		t.Errorf("Invalid default env file with one var set:\n%s", envConfig)
+	}
+}

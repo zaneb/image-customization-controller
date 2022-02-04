@@ -1,6 +1,7 @@
 package ignition
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -116,6 +117,11 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 	}
 
 	config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
+		"/etc/systemd/system.conf.d/10-default-env.conf",
+		0644, false,
+		b.defaultEnv()))
+
+	config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
 		"/etc/NetworkManager/conf.d/clientid.conf",
 		0644, false,
 		[]byte("[connection]\nipv6.dhcp-duid=ll\nipv6.dhcp-iaid=mac")))
@@ -143,4 +149,20 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 	}
 
 	return json.Marshal(config)
+}
+
+func (b *ignitionBuilder) defaultEnv() []byte {
+	buf := bytes.NewBufferString("[Manager]\n")
+
+	setEnv := func(envVar, value string) {
+		if value != "" {
+			buf.WriteString(fmt.Sprintf("DefaultEnvironment=%s=\"%s\"\n",
+				envVar, value))
+		}
+	}
+
+	setEnv("HTTP_PROXY", b.httpProxy)
+	setEnv("HTTPS_PROXY", b.httpsProxy)
+	setEnv("NO_PROXY", b.noProxy)
+	return buf.Bytes()
 }

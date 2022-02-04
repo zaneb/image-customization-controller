@@ -61,9 +61,6 @@ Description=Ironic Agent
 After=network-online.target
 Wants=network-online.target
 [Service]
-Environment="HTTP_PROXY="
-Environment="HTTPS_PROXY="
-Environment="NO_PROXY="
 TimeoutStartSec=0
 Restart=on-failure
 ExecStartPre=/bin/podman pull http://example.com/foo:latest --tls-verify=false --authfile=/etc/authfile.json
