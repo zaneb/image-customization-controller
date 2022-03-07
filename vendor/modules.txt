@@ -39,7 +39,7 @@ github.com/daixiang0/gci/pkg/gci
 github.com/davecgh/go-spew/spew
 # github.com/denis-tingajkin/go-header v0.3.1
 github.com/denis-tingajkin/go-header
-# github.com/diskfs/go-diskfs v1.2.0
+# github.com/diskfs/go-diskfs v1.2.1-0.20210727185522-a769efacd235
 github.com/diskfs/go-diskfs
 github.com/diskfs/go-diskfs/disk
 github.com/diskfs/go-diskfs/filesystem
@@ -275,7 +275,7 @@ github.com/nbutton23/zxcvbn-go/scoring
 github.com/nbutton23/zxcvbn-go/utils/math
 # github.com/nishanths/exhaustive v0.1.0
 github.com/nishanths/exhaustive
-# github.com/openshift/assisted-image-service v0.0.0-20211122133112-1552361c0458
+# github.com/openshift/assisted-image-service v0.0.0-20220301135350-10a987fbc261
 ## explicit
 github.com/openshift/assisted-image-service/pkg/isoeditor
 github.com/openshift/assisted-image-service/pkg/overlay
@@ -368,7 +368,7 @@ github.com/tomarrell/wrapcheck/wrapcheck
 github.com/tommy-muehle/go-mnd
 github.com/tommy-muehle/go-mnd/checks
 github.com/tommy-muehle/go-mnd/config
-# github.com/ulikunitz/xz v0.5.6
+# github.com/ulikunitz/xz v0.5.10
 github.com/ulikunitz/xz
 github.com/ulikunitz/xz/internal/hash
 github.com/ulikunitz/xz/internal/xlog
