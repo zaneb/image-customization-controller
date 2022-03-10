@@ -32,7 +32,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -42,9 +41,10 @@ import (
 )
 
 const (
-	provisionerRetryDelay          = time.Second * 30
-	resourceNotAvailableRetryDelay = time.Second * 30
-	reconcilerRequeueDelay         = time.Minute * 5
+	provisionerRetryDelay                = time.Second * 30
+	resourceNotAvailableRetryDelay       = time.Second * 30
+	reconcilerRequeueDelay               = time.Minute * 5
+	reconcilerRequeueDelayChangeDetected = time.Minute * 1
 )
 
 // HostFirmwareSettingsReconciler reconciles a HostFirmwareSettings object
@@ -163,6 +163,10 @@ func (r *HostFirmwareSettingsReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	// requeue to run again after delay
+	if meta.IsStatusConditionTrue(info.hfs.Status.Conditions, string(metal3v1alpha1.FirmwareSettingsChangeDetected)) {
+		// If there is a difference between Spec and Status shorten the query from Ironic so that the Status is updated when cleaning completes
+		return ctrl.Result{Requeue: true, RequeueAfter: reconcilerRequeueDelayChangeDetected}, nil
+	}
 	return ctrl.Result{Requeue: true, RequeueAfter: reconcilerRequeueDelay}, nil
 }
 
@@ -208,7 +212,7 @@ func (r *HostFirmwareSettingsReconciler) updateStatus(info *rInfo, settings meta
 	specMismatch := false
 	for k, v := range info.hfs.Spec.Settings {
 		if statusVal, ok := info.hfs.Status.Settings[k]; ok {
-			if v != intstr.FromString(statusVal) {
+			if v.String() != statusVal {
 				specMismatch = true
 				break
 			}
@@ -299,6 +303,14 @@ func (r *HostFirmwareSettingsReconciler) getOrCreateFirmwareSchema(info *rInfo, 
 	// Copy in the schema from provisioner
 	firmwareSchema.Spec.Schema = make(map[string]metal3v1alpha1.SettingSchema)
 	for k, v := range schema {
+		// Don't store Password settings in Schema as these aren't stored in HostFirmwareSettings
+		if strings.Contains(k, "Password") {
+			continue
+		}
+		if v.AttributeType == "Password" {
+			continue
+		}
+
 		firmwareSchema.Spec.Schema[k] = v
 	}
 	// Set hfs as owner
@@ -332,13 +344,13 @@ func (r *HostFirmwareSettingsReconciler) validateHostFirmwareSettings(info *rInf
 		// Prohibit any Spec settings with "Password"
 		if strings.Contains(name, "Password") {
 			errors = append(errors, fmt.Errorf("Cannot set Password field"))
-			break
+			continue
 		}
 
 		// The setting must be in the Status
 		if _, ok := info.hfs.Status.Settings[name]; !ok {
 			errors = append(errors, fmt.Errorf("Setting %s is not in the Status field", name))
-			break
+			continue
 		}
 
 		// check validity of updated value
