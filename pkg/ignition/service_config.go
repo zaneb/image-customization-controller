@@ -24,7 +24,7 @@ inspection_dhcp_all_interfaces = True
 	return ignitionFileEmbed("/etc/ironic-python-agent.conf", 0644, false, []byte(contents))
 }
 
-func (b *ignitionBuilder) ironicAgentService() ignition_config_types_32.Unit {
+func (b *ignitionBuilder) ironicAgentService(copyNetwork bool) ignition_config_types_32.Unit {
 	flags := ironicAgentPodmanFlags
 	if b.ironicAgentPullSecret != "" {
 		flags += " --authfile=/etc/authfile.json"
@@ -41,11 +41,11 @@ Environment="NO_PROXY=%s"
 TimeoutStartSec=0
 Restart=on-failure
 ExecStartPre=/bin/podman pull %s %s
-ExecStart=/bin/podman run --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --env "IPA_COREOS_IP_OPTIONS=%s" --name ironic-agent %s
+ExecStart=/bin/podman run --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --env "IPA_COREOS_IP_OPTIONS=%s" --env IPA_COREOS_COPY_NETWORK=%v --name ironic-agent %s
 [Install]
 WantedBy=multi-user.target
 `
-	contents := fmt.Sprintf(unitTemplate, b.httpProxy, b.httpsProxy, b.noProxy, b.ironicAgentImage, flags, b.ipOptions, b.ironicAgentImage)
+	contents := fmt.Sprintf(unitTemplate, b.httpProxy, b.httpsProxy, b.noProxy, b.ironicAgentImage, flags, b.ipOptions, copyNetwork, b.ironicAgentImage)
 
 	return ignition_config_types_32.Unit{
 		Name:     "ironic-agent.service",
