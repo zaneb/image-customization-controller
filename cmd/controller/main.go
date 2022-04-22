@@ -23,10 +23,13 @@ import (
 	"os"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -43,6 +46,10 @@ import (
 var (
 	scheme   = k8sruntime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
+)
+
+const (
+	infraEnvLabel string = "infraenvs.agent-install.openshift.io"
 )
 
 func init() {
@@ -66,11 +73,26 @@ func setupChecks(mgr ctrl.Manager) error {
 }
 
 func runController(watchNamespace string, imageServer imagehandler.ImageHandler, envInputs *env.EnvInputs) error {
+	excludeInfraEnv, err := labels.NewRequirement(infraEnvLabel, selection.DoesNotExist, nil)
+	if err != nil {
+		setupLog.Error(err, "cannot create an infraenv label filter")
+		return err
+	}
+
+	cacheOptions := cache.Options{
+		SelectorsByObject: cache.SelectorsByObject{
+			&metal3iov1alpha1.PreprovisioningImage{}: {
+				Label: labels.NewSelector().Add(*excludeInfraEnv),
+			},
+		},
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                scheme,
 		Port:                  0, // Add flag with default of 9443 when adding webhooks
 		Namespace:             watchNamespace,
 		ClientDisableCacheFor: []client.Object{&corev1.Secret{}},
+		NewCache:              cache.BuilderWithOptions(cacheOptions),
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
