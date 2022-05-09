@@ -3,7 +3,57 @@ package ignition
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
+
+func TestGenerateStructure(t *testing.T) {
+	builder, err := New(nil, nil,
+		"http://ironic.example.com",
+		"quay.io/openshift-release-dev/ironic-ipa-image",
+		"", "", "", "", "", "", "")
+	assert.NoError(t, err)
+
+	ignition, err := builder.GenerateConfig()
+	assert.NoError(t, err)
+
+	assert.Equal(t, "3.2.0", ignition.Ignition.Version)
+	assert.Len(t, ignition.Systemd.Units, 1)
+	assert.Len(t, ignition.Storage.Files, 2)
+	assert.Len(t, ignition.Passwd.Users, 0)
+
+	// Sanity-check only
+	assert.Contains(t, *ignition.Systemd.Units[0].Contents, "ironic-agent")
+	assert.Contains(t, *ignition.Storage.Files[0].Contents.Source, "ironic.example.com")
+	assert.Equal(t, ignition.Storage.Files[1].Path, "/etc/NetworkManager/conf.d/clientid.conf")
+}
+
+func TestGenerateWithMoreFields(t *testing.T) {
+	builder, err := New(nil, []byte("I am registry"),
+		"http://ironic.example.com",
+		"quay.io/openshift-release-dev/ironic-ipa-image",
+		"pull secret", "SSH key", "ip=dhcp42",
+		"proxy me", "", "don't proxy me", "my-host")
+	assert.NoError(t, err)
+
+	ignition, err := builder.GenerateConfig()
+	assert.NoError(t, err)
+
+	assert.Equal(t, "3.2.0", ignition.Ignition.Version)
+	assert.Len(t, ignition.Systemd.Units, 1)
+	assert.Len(t, ignition.Storage.Files, 5)
+	assert.Len(t, ignition.Passwd.Users, 1)
+
+	// Sanity-check only
+	assert.Contains(t, *ignition.Systemd.Units[0].Contents, "ironic-agent")
+	assert.Contains(t, *ignition.Storage.Files[0].Contents.Source, "ironic.example.com")
+	assert.Equal(t, ignition.Storage.Files[1].Path, "/etc/authfile.json")
+	assert.Equal(t, ignition.Storage.Files[2].Path, "/etc/NetworkManager/conf.d/clientid.conf")
+	assert.Equal(t, ignition.Storage.Files[3].Path, "/etc/NetworkManager/dispatcher.d/01-hostname")
+	assert.Equal(t, ignition.Storage.Files[4].Path, "/etc/containers/registries.conf")
+	assert.Equal(t, ignition.Passwd.Users[0].Name, "core")
+	assert.Len(t, ignition.Passwd.Users[0].SSHAuthorizedKeys, 1)
+}
 
 func TestGenerateRegistries(t *testing.T) {
 	registries := `

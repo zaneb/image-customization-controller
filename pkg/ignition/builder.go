@@ -73,34 +73,26 @@ func (b *ignitionBuilder) ProcessNetworkState() (error, string) {
 	return nil, ""
 }
 
-func (b *ignitionBuilder) Generate() ([]byte, error) {
+func (b *ignitionBuilder) GenerateConfig() (config ignition_config_types_32.Config, err error) {
 	netFiles := []ignition_config_types_32.File{}
 	if len(b.nmStateData) > 0 {
 		nmstatectl := exec.Command("nmstatectl", "gc", "-")
 		nmstatectl.Stdin = strings.NewReader(string(b.nmStateData))
 		out, err := nmstatectl.Output()
 		if err != nil {
-			return nil, err
+			return config, err
 		}
 
 		netFiles, err = nmstateOutputToFiles(out)
 		if err != nil {
-			return nil, err
+			return config, err
 		}
 	}
 
-	config := ignition_config_types_32.Config{
-		Ignition: ignition_config_types_32.Ignition{
-			Version: "3.2.0",
-		},
-		Storage: ignition_config_types_32.Storage{
-			Files: []ignition_config_types_32.File{b.ironicPythonAgentConf()},
-		},
-		Systemd: ignition_config_types_32.Systemd{
-			Units: []ignition_config_types_32.Unit{b.ironicAgentService(len(netFiles) > 0)},
-		},
-	}
+	config.Ignition.Version = "3.2.0"
+	config.Storage.Files = []ignition_config_types_32.File{b.IronicAgentConf()}
 	config.Storage.Files = append(config.Storage.Files, netFiles...)
+	config.Systemd.Units = []ignition_config_types_32.Unit{b.IronicAgentService(len(netFiles) > 0)}
 
 	if b.ironicAgentPullSecret != "" {
 		config.Storage.Files = append(config.Storage.Files, b.authFile())
@@ -120,14 +112,16 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 		0644, false,
 		[]byte("[connection]\nipv6.dhcp-duid=ll\nipv6.dhcp-iaid=mac")))
 
-	update_hostname := fmt.Sprintf(`
-	[[ "$DHCP6_FQDN_FQDN" =~ "." ]] && hostnamectl set-hostname --static --transient $DHCP6_FQDN_FQDN 
-	[[ "$(< /proc/sys/kernel/hostname)" =~ (localhost|localhost.localdomain) ]] && hostnamectl set-hostname --transient %s`, b.hostname)
+	if b.hostname != "" {
+		update_hostname := fmt.Sprintf(`
+	    [[ "$DHCP6_FQDN_FQDN" =~ "." ]] && hostnamectl set-hostname --static --transient $DHCP6_FQDN_FQDN 
+	    [[ "$(< /proc/sys/kernel/hostname)" =~ (localhost|localhost.localdomain) ]] && hostnamectl set-hostname --transient %s`, b.hostname)
 
-	config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
-		"/etc/NetworkManager/dispatcher.d/01-hostname",
-		0744, false,
-		[]byte(update_hostname)))
+		config.Storage.Files = append(config.Storage.Files, ignitionFileEmbed(
+			"/etc/NetworkManager/dispatcher.d/01-hostname",
+			0744, false,
+			[]byte(update_hostname)))
+	}
 
 	if len(b.registriesConf) > 0 {
 		registriesFile := ignitionFileEmbed("/etc/containers/registries.conf",
@@ -139,7 +133,16 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 
 	report := config.Storage.Validate(vpath.ContextPath{})
 	if report.IsFatal() {
-		return nil, errors.New(report.String())
+		return config, errors.New(report.String())
+	}
+
+	return config, nil
+}
+
+func (b *ignitionBuilder) Generate() ([]byte, error) {
+	config, err := b.GenerateConfig()
+	if err != nil {
+		return nil, err
 	}
 
 	return json.Marshal(config)

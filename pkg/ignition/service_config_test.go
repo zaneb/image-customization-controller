@@ -35,7 +35,7 @@ func TestIronicPythonAgentConf(t *testing.T) {
 			b := &ignitionBuilder{
 				ironicBaseURL: tt.ironicBaseURL,
 			}
-			if got := b.ironicPythonAgentConf(); !reflect.DeepEqual(got, tt.want) {
+			if got := b.IronicAgentConf(); !reflect.DeepEqual(got, tt.want) {
 				t.Error(cmp.Diff(tt.want, got))
 			}
 		})
@@ -47,6 +47,7 @@ func TestIronicAgentService(t *testing.T) {
 		name                  string
 		ironicAgentImage      string
 		ironicAgentPullSecret string
+		copyNetwork           bool
 		want                  ignition_config_types_32.Unit
 	}{
 		{
@@ -58,7 +59,28 @@ func TestIronicAgentService(t *testing.T) {
 				Enabled:  pointer.BoolPtr(true),
 				Contents: pointer.StringPtr("[Unit]\nDescription=Ironic Agent\nAfter=network-online.target\nWants=network-online.target\n[Service]\nEnvironment=\"HTTP_PROXY=\"\nEnvironment=\"HTTPS_PROXY=\"\nEnvironment=\"NO_PROXY=\"\nTimeoutStartSec=0\nRestart=on-failure\nExecStartPre=/bin/podman pull http://example.com/foo:latest --tls-verify=false --authfile=/etc/authfile.json\nExecStart=/bin/podman run --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --env \"IPA_COREOS_IP_OPTIONS=ip=dhcp6\" --env IPA_COREOS_COPY_NETWORK=false --name ironic-agent http://example.com/foo:latest\n[Install]\nWantedBy=multi-user.target\n"),
 			},
-		}}
+		},
+		{
+			name:             "no pull secret",
+			ironicAgentImage: "http://example.com/foo:latest",
+			want: ignition_config_types_32.Unit{
+				Name:     "ironic-agent.service",
+				Enabled:  pointer.BoolPtr(true),
+				Contents: pointer.StringPtr("[Unit]\nDescription=Ironic Agent\nAfter=network-online.target\nWants=network-online.target\n[Service]\nEnvironment=\"HTTP_PROXY=\"\nEnvironment=\"HTTPS_PROXY=\"\nEnvironment=\"NO_PROXY=\"\nTimeoutStartSec=0\nRestart=on-failure\nExecStartPre=/bin/podman pull http://example.com/foo:latest --tls-verify=false\nExecStart=/bin/podman run --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --env \"IPA_COREOS_IP_OPTIONS=ip=dhcp6\" --env IPA_COREOS_COPY_NETWORK=false --name ironic-agent http://example.com/foo:latest\n[Install]\nWantedBy=multi-user.target\n"),
+			},
+		},
+		{
+			name:                  "copy network",
+			ironicAgentImage:      "http://example.com/foo:latest",
+			ironicAgentPullSecret: "foo",
+			copyNetwork:           true,
+			want: ignition_config_types_32.Unit{
+				Name:     "ironic-agent.service",
+				Enabled:  pointer.BoolPtr(true),
+				Contents: pointer.StringPtr("[Unit]\nDescription=Ironic Agent\nAfter=network-online.target\nWants=network-online.target\n[Service]\nEnvironment=\"HTTP_PROXY=\"\nEnvironment=\"HTTPS_PROXY=\"\nEnvironment=\"NO_PROXY=\"\nTimeoutStartSec=0\nRestart=on-failure\nExecStartPre=/bin/podman pull http://example.com/foo:latest --tls-verify=false --authfile=/etc/authfile.json\nExecStart=/bin/podman run --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --env \"IPA_COREOS_IP_OPTIONS=ip=dhcp6\" --env IPA_COREOS_COPY_NETWORK=true --name ironic-agent http://example.com/foo:latest\n[Install]\nWantedBy=multi-user.target\n"),
+			},
+		},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := &ignitionBuilder{
@@ -66,7 +88,7 @@ func TestIronicAgentService(t *testing.T) {
 				ironicAgentPullSecret: tt.ironicAgentPullSecret,
 				ipOptions:             "ip=dhcp6",
 			}
-			if got := b.ironicAgentService(false); !reflect.DeepEqual(got, tt.want) {
+			if got := b.IronicAgentService(tt.copyNetwork); !reflect.DeepEqual(got, tt.want) {
 				t.Error(cmp.Diff(tt.want, got))
 			}
 		})
