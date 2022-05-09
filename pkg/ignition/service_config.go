@@ -8,7 +8,7 @@ import (
 	"k8s.io/utils/pointer"
 )
 
-func (b *ignitionBuilder) ironicPythonAgentConf() ignition_config_types_32.File {
+func (b *ignitionBuilder) IronicAgentConf() ignition_config_types_32.File {
 	template := `
 [DEFAULT]
 api_url = %s:6385
@@ -24,7 +24,7 @@ inspection_dhcp_all_interfaces = True
 	return ignitionFileEmbed("/etc/ironic-python-agent.conf", 0644, false, []byte(contents))
 }
 
-func (b *ignitionBuilder) ironicAgentService(copyNetwork bool) ignition_config_types_32.Unit {
+func (b *ignitionBuilder) IronicAgentService(copyNetwork bool) ignition_config_types_32.Unit {
 	flags := ironicAgentPodmanFlags
 	if b.ironicAgentPullSecret != "" {
 		flags += " --authfile=/etc/authfile.json"
