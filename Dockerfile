@@ -7,4 +7,10 @@ RUN CGO_ENABLED=0 GO111MODULE=on go build -mod=vendor -a -o bin/image-customizat
 FROM registry.ci.openshift.org/ocp/4.11:base
 COPY --from=builder /go/src/github.com/openshift/image-customization-controller/bin/image-customization-controller /
 COPY --from=builder /go/src/github.com/openshift/image-customization-controller/bin/image-customization-server /
+
+# Binaries should be renamed to machine-image-customization-*, but to ensure
+# backwards compatibility just create symlinks for now.
+RUN ln -s /image-customization-controller /machine-image-customization-controller
+RUN ln -s /image-customization-server /machine-image-customization-server
+
 RUN dnf install -y nmstate
