@@ -6,7 +6,6 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
-	"regexp"
 )
 
 type Lint struct {
@@ -41,19 +40,31 @@ func LintFmtErrorfCalls(fset *token.FileSet, info types.Info) []Lint {
 		if !ok {
 			continue
 		}
-		// For all arguments that are errors, check whether the wrapping verb
-		// is used.
-		for i, arg := range call.Args[1:] {
-			if info.Types[arg].Type.String() != "error" && !isErrorStringCall(info, arg) {
+
+		// For any arguments that are errors, check whether the wrapping verb
+		// is used. Only one %w verb may be used in a single format string at a
+		// time, so we stop after finding a correct %w.
+		var lintArg ast.Expr
+		args := call.Args[1:]
+		for i := 0; i < len(args) && i < len(formatVerbs); i++ {
+			if !implementsError(info.Types[args[i]].Type) && !isErrorStringCall(info, args[i]) {
 				continue
 			}
 
-			if len(formatVerbs) >= i && formatVerbs[i] != "%w" {
-				lints = append(lints, Lint{
-					Message: "non-wrapping format verb for fmt.Errorf. Use `%w` to format errors",
-					Pos:     arg.Pos(),
-				})
+			if formatVerbs[i] == "w" {
+				lintArg = nil
+				break
 			}
+
+			if lintArg == nil {
+				lintArg = args[i]
+			}
+		}
+		if lintArg != nil {
+			lints = append(lints, Lint{
+				Message: "non-wrapping format verb for fmt.Errorf. Use `%w` to format errors",
+				Pos:     lintArg.Pos(),
+			})
 		}
 	}
 	return lints
@@ -73,6 +84,9 @@ func isErrorStringCall(info types.Info, expr ast.Expr) bool {
 	return false
 }
 
+// printfFormatStringVerbs returns a normalized list of all the verbs that are used per argument to
+// the printf function. The index of each returned element corresponds to index of the respective
+// argument.
 func printfFormatStringVerbs(info types.Info, call *ast.CallExpr) ([]string, bool) {
 	if len(call.Args) <= 1 {
 		return nil, false
@@ -84,10 +98,23 @@ func printfFormatStringVerbs(info types.Info, call *ast.CallExpr) ([]string, boo
 	}
 	formatString := constant.StringVal(info.Types[strLit].Value)
 
-	// Naive format string argument verb. This does not take modifiers such as
-	// padding into account...
-	re := regexp.MustCompile(`%[^%]`)
-	return re.FindAllString(formatString, -1), true
+	pp := printfParser{str: formatString}
+	verbs, err := pp.ParseAllVerbs()
+	if err != nil {
+		return nil, false
+	}
+	orderedVerbs := verbOrder(verbs, len(call.Args)-1)
+
+	resolvedVerbs := make([]string, len(orderedVerbs))
+	for i, vv := range orderedVerbs {
+		for _, v := range vv {
+			resolvedVerbs[i] = v.format
+			if v.format == "w" {
+				break
+			}
+		}
+	}
+	return resolvedVerbs, true
 }
 
 func isFmtErrorfCallExpr(info types.Info, expr ast.Expr) (*ast.CallExpr, bool) {
@@ -109,7 +136,7 @@ func isFmtErrorfCallExpr(info types.Info, expr ast.Expr) (*ast.CallExpr, bool) {
 	return nil, false
 }
 
-func LintErrorComparisons(fset *token.FileSet, info types.Info) []Lint {
+func LintErrorComparisons(fset *token.FileSet, info *TypesInfoExt) []Lint {
 	lints := []Lint{}
 
 	for expr := range info.Types {
@@ -126,7 +153,11 @@ func LintErrorComparisons(fset *token.FileSet, info types.Info) []Lint {
 			continue
 		}
 		// Find comparisons of which one side is a of type error.
-		if !isErrorComparison(info, binExpr) {
+		if !isErrorComparison(info.Info, binExpr) {
+			continue
+		}
+
+		if isAllowedErrorComparison(info, binExpr) {
 			continue
 		}
 
@@ -230,4 +261,21 @@ func LintErrorTypeAssertions(fset *token.FileSet, info types.Info) []Lint {
 func isErrorTypeAssertion(info types.Info, typeAssert *ast.TypeAssertExpr) bool {
 	t := info.Types[typeAssert.X]
 	return t.Type.String() == "error"
+}
+
+func implementsError(t types.Type) bool {
+	mset := types.NewMethodSet(t)
+
+	for i := 0; i < mset.Len(); i++ {
+		if mset.At(i).Kind() != types.MethodVal {
+			continue
+		}
+
+		obj := mset.At(i).Obj()
+		if obj.Name() == "Error" && obj.Type().String() == "func() string" {
+			return true
+		}
+	}
+
+	return false
 }

@@ -2,36 +2,117 @@ package ruleguard
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"go/ast"
+	"go/build"
 	"go/printer"
+	"go/token"
 	"io/ioutil"
+	"path/filepath"
+	"reflect"
+	"sort"
+	"strconv"
 	"strings"
 
-	"github.com/quasilyte/go-ruleguard/internal/mvdan.cc/gogrep"
+	"github.com/quasilyte/go-ruleguard/ruleguard/goutil"
+	"github.com/quasilyte/go-ruleguard/ruleguard/profiling"
+	"github.com/quasilyte/go-ruleguard/ruleguard/typematch"
+	"github.com/quasilyte/gogrep"
+	"github.com/quasilyte/gogrep/nodetag"
 )
 
 type rulesRunner struct {
-	ctx   *Context
-	rules *GoRuleSet
+	state *engineState
+
+	bgContext context.Context
+
+	ctx   *RunContext
+	rules *goRuleSet
+
+	truncateLen int
+
+	reportData ReportData
+
+	gogrepState    gogrep.MatcherState
+	gogrepSubState gogrep.MatcherState
+
+	importer *goImporter
 
 	filename string
 	src      []byte
+
+	// nodePath is a stack of ast.Nodes we visited to this point.
+	// When we enter a new node, it's placed on the top of the stack.
+	// When we leave that node, it's popped.
+	// The stack is a slice that is allocated only once and reused
+	// for the lifetime of the runner.
+	// The only overhead it has is a slice append and pop operations
+	// that are quire cheap.
+	//
+	// Note: we need this path to get a Node.Parent() for `$$` matches.
+	// So it's used to climb up the tree there.
+	// For named submatches we can't use it as the node can be located
+	// deeper into the tree than the current node.
+	// In those cases we need a more complicated algorithm.
+	nodePath nodePath
+
+	filterParams filterParams
 }
 
-func newRulesRunner(ctx *Context, rules *GoRuleSet) *rulesRunner {
-	return &rulesRunner{
-		ctx:   ctx,
-		rules: rules,
+func newRulesRunner(ctx *RunContext, buildContext *build.Context, state *engineState, rules *goRuleSet) *rulesRunner {
+	importer := newGoImporter(state, goImporterConfig{
+		fset:         ctx.Fset,
+		debugImports: ctx.DebugImports,
+		debugPrint:   ctx.DebugPrint,
+		buildContext: buildContext,
+	})
+	gogrepState := gogrep.NewMatcherState()
+	gogrepState.Types = ctx.Types
+	gogrepSubState := gogrep.NewMatcherState()
+	gogrepSubState.Types = ctx.Types
+	rr := &rulesRunner{
+		bgContext:      context.Background(),
+		ctx:            ctx,
+		importer:       importer,
+		rules:          rules,
+		gogrepState:    gogrepState,
+		gogrepSubState: gogrepSubState,
+		nodePath:       newNodePath(),
+		truncateLen:    ctx.TruncateLen,
+		filterParams: filterParams{
+			typematchState: typematch.NewMatcherState(),
+			env:            state.env.GetEvalEnv(),
+			importer:       importer,
+			ctx:            ctx,
+		},
 	}
+	if ctx.TruncateLen == 0 {
+		rr.truncateLen = 60
+	}
+	rr.filterParams.nodeText = rr.nodeText
+	rr.filterParams.nodePath = &rr.nodePath
+	rr.filterParams.gogrepSubState = &rr.gogrepSubState
+	return rr
 }
 
 func (rr *rulesRunner) nodeText(n ast.Node) []byte {
+	if gogrep.IsEmptyNodeSlice(n) {
+		return nil
+	}
+
 	from := rr.ctx.Fset.Position(n.Pos()).Offset
 	to := rr.ctx.Fset.Position(n.End()).Offset
 	src := rr.fileBytes()
-	if (from >= 0 && int(from) < len(src)) && (to >= 0 && int(to) < len(src)) {
+	if (from >= 0 && from < len(src)) && (to >= 0 && to < len(src)) {
 		return src[from:to]
 	}
+
+	// Go printer would panic on comments.
+	if n, ok := n.(*ast.Comment); ok {
+		return []byte(n.Text)
+	}
+
 	// Fallback to the printer.
 	var buf bytes.Buffer
 	if err := printer.Fprint(&buf, rr.ctx.Fset, n); err != nil {
@@ -58,137 +139,357 @@ func (rr *rulesRunner) fileBytes() []byte {
 }
 
 func (rr *rulesRunner) run(f *ast.File) error {
-	// TODO(quasilyte): run local rules as well.
+	// If it's not empty then we're leaking memory.
+	// For every Push() there should be a Pop() call.
+	if rr.nodePath.Len() != 0 {
+		panic("internal error: node path is not empty")
+	}
 
 	rr.filename = rr.ctx.Fset.Position(f.Pos()).Filename
+	rr.filterParams.filename = rr.filename
+	rr.collectImports(f)
 
-	for _, rule := range rr.rules.universal.uncategorized {
-		rule.pat.Match(f, func(m gogrep.MatchData) {
-			rr.handleMatch(rule, m)
+	if rr.rules.universal.categorizedNum != 0 {
+		var inspector astWalker
+		inspector.nodePath = &rr.nodePath
+		inspector.filterParams = &rr.filterParams
+		inspector.Walk(f, func(n ast.Node, tag nodetag.Value) {
+			rr.runRules(n, tag)
 		})
 	}
 
-	if rr.rules.universal.categorizedNum != 0 {
-		ast.Inspect(f, func(n ast.Node) bool {
-			cat := categorizeNode(n)
-			for _, rule := range rr.rules.universal.rulesByCategory[cat] {
-				matched := false
-				rule.pat.MatchNode(n, func(m gogrep.MatchData) {
-					matched = rr.handleMatch(rule, m)
-				})
-				if matched {
-					break
-				}
+	if len(rr.rules.universal.commentRules) != 0 {
+		for _, commentGroup := range f.Comments {
+			for _, comment := range commentGroup.List {
+				rr.runCommentRules(comment)
 			}
-			return true
-		})
+		}
 	}
 
 	return nil
 }
 
-func (rr *rulesRunner) handleMatch(rule goRule, m gogrep.MatchData) bool {
-	for name, node := range m.Values {
-		expr, ok := node.(ast.Expr)
-		if !ok {
+func (rr *rulesRunner) runCommentRules(comment *ast.Comment) {
+	// We'll need that file to create a token.Pos from the artificial offset.
+	file := rr.ctx.Fset.File(comment.Pos())
+
+	for _, rule := range rr.rules.universal.commentRules {
+		var m commentMatchData
+		if rule.captureGroups {
+			result := rule.pat.FindStringSubmatchIndex(comment.Text)
+			if result == nil {
+				continue
+			}
+			for i, name := range rule.pat.SubexpNames() {
+				if i == 0 || name == "" {
+					continue
+				}
+				resultIndex := i * 2
+				beginPos := result[resultIndex+0]
+				endPos := result[resultIndex+1]
+				// Negative index a special case when named group captured nothing.
+				// Consider this pattern: `(?P<x>foo)|(bar)`.
+				// If we have `bar` input string, <x> will remain empty.
+				if beginPos < 0 || endPos < 0 {
+					m.capture = append(m.capture, gogrep.CapturedNode{
+						Name: name,
+						Node: &ast.Comment{Slash: comment.Pos()},
+					})
+					continue
+				}
+				m.capture = append(m.capture, gogrep.CapturedNode{
+					Name: name,
+					Node: &ast.Comment{
+						Slash: file.Pos(beginPos + file.Offset(comment.Pos())),
+						Text:  comment.Text[beginPos:endPos],
+					},
+				})
+			}
+			m.node = &ast.Comment{
+				Slash: file.Pos(result[0] + file.Offset(comment.Pos())),
+				Text:  comment.Text[result[0]:result[1]],
+			}
+		} else {
+			// Fast path: no need to save any submatches.
+			result := rule.pat.FindStringIndex(comment.Text)
+			if result == nil {
+				continue
+			}
+			m.node = &ast.Comment{
+				Slash: file.Pos(result[0] + file.Offset(comment.Pos())),
+				Text:  comment.Text[result[0]:result[1]],
+			}
+		}
+
+		accept := rr.handleCommentMatch(rule, m)
+		if accept {
+			break
+		}
+	}
+}
+
+func (rr *rulesRunner) runRules(n ast.Node, tag nodetag.Value) {
+	// profiling.LabelsEnabled is constant, so labels-related
+	// code should be a no-op inside normal build.
+	// To enable labels, use "-tags pproflabels" build tag.
+
+	for _, rule := range rr.rules.universal.rulesByTag[tag] {
+		if profiling.LabelsEnabled {
+			profiling.EnterWithLabels(rr.bgContext, rule.group.Name)
+		}
+
+		matched := false
+		rule.pat.MatchNode(&rr.gogrepState, n, func(m gogrep.MatchData) {
+			matched = rr.handleMatch(rule, m)
+		})
+
+		if profiling.LabelsEnabled {
+			profiling.Leave(rr.bgContext)
+		}
+
+		if matched && !multiMatchTags[tag] {
+			break
+		}
+	}
+}
+
+func (rr *rulesRunner) reject(rule goRule, reason string, m matchData) {
+	if rule.group.Name != rr.ctx.Debug {
+		return // This rule is not being debugged
+	}
+
+	pos := rr.ctx.Fset.Position(m.Node().Pos())
+	rr.ctx.DebugPrint(fmt.Sprintf("%s:%d: [%s:%d] rejected by %s",
+		pos.Filename, pos.Line, filepath.Base(rule.group.Filename), rule.line, reason))
+
+	values := make([]gogrep.CapturedNode, len(m.CaptureList()))
+	copy(values, m.CaptureList())
+	sort.Slice(values, func(i, j int) bool {
+		return values[i].Name < values[j].Name
+	})
+
+	for _, v := range values {
+		name := v.Name
+		node := v.Node
+
+		if comment, ok := node.(*ast.Comment); ok {
+			s := strings.ReplaceAll(comment.Text, "\n", `\n`)
+			rr.ctx.DebugPrint(fmt.Sprintf("  $%s: %s", name, s))
 			continue
 		}
-		filter, ok := rule.filters[name]
-		if !ok {
+
+		var expr ast.Expr
+		switch node := node.(type) {
+		case ast.Expr:
+			expr = node
+		case *ast.ExprStmt:
+			expr = node.X
+		default:
 			continue
 		}
-		if filter.typePred != nil {
-			typ := rr.ctx.Types.TypeOf(expr)
-			q := typeQuery{x: typ, ctx: rr.ctx}
-			if !filter.typePred(q) {
-				return false
-			}
+
+		typ := rr.ctx.Types.TypeOf(expr)
+		typeString := "<unknown>"
+		if typ != nil {
+			typeString = typ.String()
 		}
-		if filter.textPred != nil {
-			if !filter.textPred(string(rr.nodeText(expr))) {
-				return false
-			}
-		}
-		switch filter.addressable {
-		case bool3true:
-			if !isAddressable(rr.ctx.Types, expr) {
-				return false
-			}
-		case bool3false:
-			if isAddressable(rr.ctx.Types, expr) {
-				return false
-			}
-		}
-		switch filter.pure {
-		case bool3true:
-			if !isPure(rr.ctx.Types, expr) {
-				return false
-			}
-		case bool3false:
-			if isPure(rr.ctx.Types, expr) {
-				return false
-			}
-		}
-		switch filter.constant {
-		case bool3true:
-			if !isConstant(rr.ctx.Types, expr) {
-				return false
-			}
-		case bool3false:
-			if isConstant(rr.ctx.Types, expr) {
-				return false
-			}
+		s := strings.ReplaceAll(goutil.SprintNode(rr.ctx.Fset, expr), "\n", `\n`)
+		rr.ctx.DebugPrint(fmt.Sprintf("  $%s %s: %s", name, typeString, s))
+	}
+}
+
+func (rr *rulesRunner) handleCommentMatch(rule goCommentRule, m commentMatchData) bool {
+	if rule.base.filter.fn != nil {
+		rr.filterParams.match = m
+		filterResult := rule.base.filter.fn(&rr.filterParams)
+		if !filterResult.Matched() {
+			rr.reject(rule.base, filterResult.RejectReason(), m)
+			return false
 		}
 	}
 
-	prefix := ""
-	if rule.severity != "" {
-		prefix = rule.severity + ": "
-	}
-	message := prefix + rr.renderMessage(rule.msg, m.Node, m.Values, true)
-	node := m.Node
-	if rule.location != "" {
-		node = m.Values[rule.location]
+	message := rr.renderMessage(rule.base.msg, m, true)
+	node := m.Node()
+	if rule.base.location != "" {
+		node, _ = m.CapturedByName(rule.base.location)
 	}
 	var suggestion *Suggestion
-	if rule.suggestion != "" {
+	if rule.base.suggestion != "" {
 		suggestion = &Suggestion{
-			Replacement: []byte(rr.renderMessage(rule.suggestion, m.Node, m.Values, false)),
+			Replacement: []byte(rr.renderMessage(rule.base.suggestion, m, false)),
 			From:        node.Pos(),
 			To:          node.End(),
 		}
 	}
 	info := GoRuleInfo{
-		Filename: rule.filename,
+		Group: rule.base.group,
+		Line:  rule.base.line,
 	}
-	rr.ctx.Report(info, node, message, suggestion)
+	rr.reportData.RuleInfo = info
+	rr.reportData.Node = node
+	rr.reportData.Message = message
+	rr.reportData.Suggestion = suggestion
+
+	rr.ctx.Report(&rr.reportData)
 	return true
 }
 
-func (rr *rulesRunner) renderMessage(msg string, n ast.Node, nodes map[string]ast.Node, truncate bool) string {
-	var buf strings.Builder
-	if strings.Contains(msg, "$$") {
-		buf.Write(rr.nodeText(n))
-		msg = strings.ReplaceAll(msg, "$$", buf.String())
+func (rr *rulesRunner) handleMatch(rule goRule, m gogrep.MatchData) bool {
+	if rule.filter.fn != nil {
+		rr.filterParams.match = astMatchData{match: m}
+		filterResult := rule.filter.fn(&rr.filterParams)
+		if !filterResult.Matched() {
+			rr.reject(rule, filterResult.RejectReason(), astMatchData{match: m})
+			return false
+		}
 	}
-	if len(nodes) == 0 {
-		return msg
+
+	message := rr.renderMessage(rule.msg, astMatchData{match: m}, true)
+	node := m.Node
+	if rule.location != "" {
+		node, _ = m.CapturedByName(rule.location)
 	}
-	for name, n := range nodes {
-		key := "$" + name
-		if !strings.Contains(msg, key) {
+	var suggestion *Suggestion
+	if rule.suggestion != "" {
+		suggestion = &Suggestion{
+			Replacement: []byte(rr.renderMessage(rule.suggestion, astMatchData{match: m}, false)),
+			From:        node.Pos(),
+			To:          node.End(),
+		}
+	}
+	info := GoRuleInfo{
+		Group: rule.group,
+		Line:  rule.line,
+	}
+	rr.reportData.RuleInfo = info
+	rr.reportData.Node = node
+	rr.reportData.Message = message
+	rr.reportData.Suggestion = suggestion
+
+	rr.reportData.Func = rr.filterParams.currentFunc
+
+	rr.ctx.Report(&rr.reportData)
+	return true
+}
+
+func (rr *rulesRunner) collectImports(f *ast.File) {
+	rr.filterParams.imports = make(map[string]struct{}, len(f.Imports))
+	for _, spec := range f.Imports {
+		s, err := strconv.Unquote(spec.Path.Value)
+		if err != nil {
 			continue
 		}
-		buf.Reset()
-		buf.Write(rr.nodeText(n))
-		// Don't interpolate strings that are too long.
-		var replacement string
-		if truncate && buf.Len() > 60 {
-			replacement = key
-		} else {
-			replacement = buf.String()
-		}
-		msg = strings.ReplaceAll(msg, key, replacement)
+		rr.filterParams.imports[s] = struct{}{}
 	}
-	return msg
+}
+
+func (rr *rulesRunner) renderMessage(msg string, m matchData, truncate bool) string {
+	if !strings.Contains(msg, "$") {
+		return msg
+	}
+
+	var capture []gogrep.CapturedNode
+	if len(m.CaptureList()) != 0 {
+		capture = make([]gogrep.CapturedNode, 0, len(m.CaptureList()))
+		for _, c := range m.CaptureList() {
+			n := c.Node
+			// Some captured nodes are typed, but nil.
+			// We can't really get their text, so skip them here.
+			// For example, pattern `func $_() $results { $*_ }` may
+			// match a nil *ast.FieldList for $results if executed
+			// against a function with no results.
+			if reflect.ValueOf(n).IsNil() && !gogrep.IsEmptyNodeSlice(n) {
+				continue
+			}
+			capture = append(capture, c)
+		}
+		if len(capture) > 1 {
+			sort.Slice(capture, func(i, j int) bool {
+				return len(capture[i].Name) > len(capture[j].Name)
+			})
+		}
+	}
+
+	result := make([]byte, 0, len(msg)*2)
+	i := 0
+	for {
+		j := strings.IndexByte(msg[i:], '$')
+		if j == -1 {
+			result = append(result, msg[i:]...)
+			break
+		}
+		dollarPos := i + j
+		result = append(result, msg[i:dollarPos]...)
+		var n ast.Node
+		var nameLen int
+		if strings.HasPrefix(msg[dollarPos+1:], "$") {
+			n = m.Node()
+			nameLen = 1
+		} else {
+			for _, c := range capture {
+				if strings.HasPrefix(msg[dollarPos+1:], c.Name) {
+					n = c.Node
+					nameLen = len(c.Name)
+					break
+				}
+			}
+		}
+		if n != nil {
+			text := rr.nodeText(n)
+			text = rr.fixedText(text, n, msg[dollarPos+1+nameLen:])
+			if truncate {
+				text = truncateText(text, rr.truncateLen)
+			}
+			result = append(result, text...)
+		} else {
+			result = append(result, '$')
+		}
+		i = dollarPos + len("$") + nameLen
+	}
+
+	return string(result)
+}
+
+func (rr *rulesRunner) fixedText(text []byte, n ast.Node, following string) []byte {
+	// pattern=`$x.y` $x=`&buf` following=`.y`
+	// Insert $x as `buf`, so we get `buf.y` instead of incorrect `&buf.y`.
+	if n, ok := n.(*ast.UnaryExpr); ok && n.Op == token.AND {
+		shouldFix := false
+		switch n.X.(type) {
+		case *ast.Ident, *ast.IndexExpr, *ast.SelectorExpr:
+			shouldFix = true
+		}
+		if shouldFix && strings.HasPrefix(following, ".") {
+			return bytes.TrimPrefix(text, []byte("&"))
+		}
+	}
+
+	return text
+}
+
+var longTextPlaceholder = []byte("<...>")
+
+func truncateText(s []byte, maxLen int) []byte {
+	if len(s) <= maxLen-len(longTextPlaceholder) {
+		return s
+	}
+	maxLen -= len(longTextPlaceholder)
+	leftLen := maxLen / 2
+	rightLen := (maxLen % 2) + leftLen
+	left := s[:leftLen]
+	right := s[len(s)-rightLen:]
+
+	result := make([]byte, 0, len(left)+len(longTextPlaceholder)+len(right))
+	result = append(result, left...)
+	result = append(result, longTextPlaceholder...)
+	result = append(result, right...)
+
+	return result
+}
+
+var multiMatchTags = [nodetag.NumBuckets]bool{
+	nodetag.BlockStmt:  true,
+	nodetag.CaseClause: true,
+	nodetag.CommClause: true,
+	nodetag.File:       true,
 }
