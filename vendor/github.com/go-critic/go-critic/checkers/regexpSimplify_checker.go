@@ -8,9 +8,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/quasilyte/regex/syntax"
+
 	"github.com/go-critic/go-critic/checkers/internal/astwalk"
 	"github.com/go-critic/go-critic/framework/linter"
-	"github.com/quasilyte/regex/syntax"
 )
 
 func init() {
@@ -26,7 +27,7 @@ func init() {
 	//      `[[:digit:]] -> \d`
 	//      `[A-Za-z0-9_]` -> `\w`
 
-	collection.AddChecker(&info, func(ctx *linter.CheckerContext) linter.FileWalker {
+	collection.AddChecker(&info, func(ctx *linter.CheckerContext) (linter.FileWalker, error) {
 		opts := &syntax.ParserOptions{
 			NoLiterals: true,
 		}
@@ -35,7 +36,7 @@ func init() {
 			parser: syntax.NewParser(opts),
 			out:    &strings.Builder{},
 		}
-		return astwalk.WalkerForExpr(c)
+		return astwalk.WalkerForExpr(c), nil
 	})
 }
 
@@ -497,9 +498,9 @@ func (c *regexpSimplifyChecker) simplifyCharRange(rng syntax.Expr) string {
 		case 0:
 			return lo
 		case 1:
-			return fmt.Sprintf("%s%s", lo, hi)
+			return lo + hi
 		case 2:
-			return fmt.Sprintf("%s%s%s", lo, string(lo[0]+1), hi)
+			return lo + string(lo[0]+1) + hi
 		}
 	}
 
