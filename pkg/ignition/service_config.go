@@ -16,7 +16,7 @@ inspection_callback_url = %s:5050/v1/continue
 insecure = True
 enable_vlan_interfaces = %s
 `
-	contents := fmt.Sprintf(template, b.ironicBaseURL, b.ironicBaseURL, ironicInspectorVlanInterfaces)
+	contents := fmt.Sprintf(template, b.ironicBaseURL, b.ironicInspectorBaseURL, ironicInspectorVlanInterfaces)
 	return ignitionFileEmbed("/etc/ironic-python-agent.conf", 0644, false, []byte(contents))
 }
 

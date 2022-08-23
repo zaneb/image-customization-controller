@@ -72,6 +72,7 @@ func loadStaticNMState(fsys fs.FS, env *env.EnvInputs, nmstateDir string, imageS
 		hostname := strings.TrimSuffix(f.Name(), path.Ext(f.Name()))
 		igBuilder, err := ignition.New(b, registries,
 			env.IronicBaseURL,
+			env.IronicInspectorBaseURL,
 			env.IronicAgentImage,
 			pullSecret,
 			env.IronicRAMDiskSSHKey,

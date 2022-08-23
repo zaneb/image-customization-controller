@@ -50,6 +50,7 @@ func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.Netw
 
 	builder, err := ignition.New(nmstateData, ip.RegistriesConf,
 		ip.EnvInputs.IronicBaseURL,
+		ip.EnvInputs.IronicInspectorBaseURL,
 		ip.EnvInputs.IronicAgentImage,
 		ip.EnvInputs.IronicAgentPullSecret,
 		ip.EnvInputs.IronicRAMDiskSSHKey,
