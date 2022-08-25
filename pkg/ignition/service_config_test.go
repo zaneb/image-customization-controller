@@ -15,17 +15,19 @@ func TestIronicPythonAgentConf(t *testing.T) {
 	tests := []struct {
 		name                          string
 		ironicBaseURL                 string
+		ironicInspectorBaseURL        string
 		ironicInspectorVlanInterfaces string
 		want                          ignition_config_types_32.File
 	}{
 		{
-			name:          "basic",
-			ironicBaseURL: "http://example.com/foo",
+			name:                   "basic",
+			ironicBaseURL:          "http://example.com/foo",
+			ironicInspectorBaseURL: "http://example.com/bar",
 			want: ignition_config_types_32.File{
 				Node: ignition_config_types_32.Node{Path: "/etc/ironic-python-agent.conf", Overwrite: &expectedOverwrite},
 				FileEmbedded1: ignition_config_types_32.FileEmbedded1{
 					Contents: ignition_config_types_32.Resource{
-						Source: pointer.StringPtr("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2Fexample.com%2Ffoo%3A6385%0Ainspection_callback_url%20%3D%20http%3A%2F%2Fexample.com%2Ffoo%3A5050%2Fv1%2Fcontinue%0Ainsecure%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20all%0A")},
+						Source: pointer.StringPtr("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2Fexample.com%2Ffoo%3A6385%0Ainspection_callback_url%20%3D%20http%3A%2F%2Fexample.com%2Fbar%3A5050%2Fv1%2Fcontinue%0Ainsecure%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20all%0A")},
 					Mode: &expectedMode},
 			},
 		},
@@ -33,7 +35,8 @@ func TestIronicPythonAgentConf(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := &ignitionBuilder{
-				ironicBaseURL: tt.ironicBaseURL,
+				ironicBaseURL:          tt.ironicBaseURL,
+				ironicInspectorBaseURL: tt.ironicInspectorBaseURL,
 			}
 			if got := b.IronicAgentConf(); !reflect.DeepEqual(got, tt.want) {
 				t.Error(cmp.Diff(tt.want, got))

@@ -9,7 +9,7 @@ import (
 
 func TestGenerateStructure(t *testing.T) {
 	builder, err := New(nil, nil,
-		"http://ironic.example.com",
+		"http://ironic.example.com", "",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
 		"", "", "", "", "", "", "")
 	assert.NoError(t, err)
@@ -24,13 +24,14 @@ func TestGenerateStructure(t *testing.T) {
 
 	// Sanity-check only
 	assert.Contains(t, *ignition.Systemd.Units[0].Contents, "ironic-agent")
-	assert.Contains(t, *ignition.Storage.Files[0].Contents.Source, "ironic.example.com")
+	assert.Contains(t, *ignition.Storage.Files[0].Contents.Source, "ironic.example.com%3A6385")
+	assert.Contains(t, *ignition.Storage.Files[0].Contents.Source, "ironic.example.com%3A5050")
 	assert.Equal(t, ignition.Storage.Files[1].Path, "/etc/NetworkManager/conf.d/clientid.conf")
 }
 
 func TestGenerateWithMoreFields(t *testing.T) {
 	builder, err := New(nil, []byte("I am registry"),
-		"http://ironic.example.com",
+		"http://ironic.example.com", "http://inspector.example.com",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
 		"pull secret", "SSH key", "ip=dhcp42",
 		"proxy me", "", "don't proxy me", "my-host")
@@ -46,7 +47,8 @@ func TestGenerateWithMoreFields(t *testing.T) {
 
 	// Sanity-check only
 	assert.Contains(t, *ignition.Systemd.Units[0].Contents, "ironic-agent")
-	assert.Contains(t, *ignition.Storage.Files[0].Contents.Source, "ironic.example.com")
+	assert.Contains(t, *ignition.Storage.Files[0].Contents.Source, "ironic.example.com%3A6385")
+	assert.Contains(t, *ignition.Storage.Files[0].Contents.Source, "inspector.example.com%3A5050")
 	assert.Equal(t, ignition.Storage.Files[1].Path, "/etc/authfile.json")
 	assert.Equal(t, ignition.Storage.Files[2].Path, "/etc/NetworkManager/conf.d/clientid.conf")
 	assert.Equal(t, ignition.Storage.Files[3].Path, "/etc/NetworkManager/dispatcher.d/01-hostname")
@@ -66,7 +68,7 @@ func TestGenerateRegistries(t *testing.T) {
     location = "virthost.ostest.test.metalkube.org:5000/localimages/local-release-image"
 `
 	builder, err := New([]byte{}, []byte(registries),
-		"http://ironic.example.com",
+		"http://ironic.example.com", "",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
 		"", "", "", "", "", "", "virthost")
 	if err != nil {
