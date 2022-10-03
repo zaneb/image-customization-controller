@@ -1,6 +1,6 @@
 module github.com/openshift/image-customization-controller
 
-go 1.18
+go 1.19
 
 require (
 	github.com/coreos/ignition/v2 v2.12.0
@@ -154,7 +154,6 @@ require (
 	github.com/ryancurrah/gomodguard v1.2.4 // indirect
 	github.com/ryanrolds/sqlclosecheck v0.3.0 // indirect
 	github.com/sanposhiho/wastedassign/v2 v2.0.6 // indirect
-	github.com/sashamelentyev/usestdlibvars v1.8.0 // indirect
 	github.com/securego/gosec/v2 v2.12.0 // indirect
 	github.com/shazow/go-diff v0.0.0-20160112020656-b6b7b6733b8c // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
