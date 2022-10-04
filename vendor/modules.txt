@@ -561,8 +561,6 @@ github.com/ryanrolds/sqlclosecheck/pkg/analyzer
 # github.com/sanposhiho/wastedassign/v2 v2.0.6
 ## explicit; go 1.14
 github.com/sanposhiho/wastedassign/v2
-# github.com/sashamelentyev/usestdlibvars v1.8.0
-## explicit; go 1.18
 # github.com/securego/gosec/v2 v2.12.0
 ## explicit; go 1.16
 github.com/securego/gosec/v2
