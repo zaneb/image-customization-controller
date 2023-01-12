@@ -22,6 +22,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -150,7 +151,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := http.ListenAndServe(imagesBindAddr, nil); err != nil {
+	server := http.Server{
+		Addr:              imagesBindAddr,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	err2 := server.ListenAndServe()
+
+	if err2 != nil {
 		log.Error(err, "problem serving images")
 		os.Exit(1)
 	}
