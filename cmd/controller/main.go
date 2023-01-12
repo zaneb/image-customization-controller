@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -159,7 +160,14 @@ func main() {
 	http.Handle("/", http.FileServer(imageServer.FileSystem()))
 
 	go func() {
-		if err := http.ListenAndServe(imagesBindAddr, nil); err != nil {
+		server := &http.Server{
+			Addr:              imagesBindAddr,
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+
+		err := server.ListenAndServe()
+
+		if err != nil {
 			setupLog.Error(err, "")
 			os.Exit(1)
 		}
