@@ -82,7 +82,7 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 
 	cacheOptions := cache.Options{
 		SelectorsByObject: cache.SelectorsByObject{
-			&metal3iov1alpha1.PreprovisioningImage{}: {
+			&metal3iov1alpha1.PreprovisioningImage{}: cache.ObjectSelector{
 				Label: labels.NewSelector().Add(*excludeInfraEnv),
 			},
 		},
