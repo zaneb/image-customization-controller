@@ -1,72 +1,82 @@
-# quick walk through
+# Machine Image Customization Controller
 
-1. get Zane's BMO pr 936
-```
-oc apply -f config/crd/bases/metal3.io_preprovisioningimages.yaml
-```
-2. get the rhcos iso
-```
-curl https://releases-art-rhcos.svc.ci.openshift.org/art/storage/releases/rhcos-4.9/49.84.202107010027-0/x86_64/rhcos-49.84.202107010027-0-live.x86_64.iso --output ~/rhcos-49.84.202107010027-0-live.x86_64.iso
-```
-3. run the controller
-```
-export DEPLOY_ISO=$HOME/rhcos-49.84.202107010027-0-live.x86_64.iso
+This repo contains a controller that reconciles [Metal³](https://metal3.io)'s
+`PreprovisioningImage` custom resources. The image built is a CoreOS live image
+customized with an Ignition file to start the Ironic Python Agent (IPA) and
+containing any per-host network data provided in [NMState](https://nmstate.io)
+format. Images are served from a webserver built in to the controller.
 
-# https://github.com/openshift/ironic-image/blob/master/scripts/ironic-common.sh
-#
-export IRONIC_BASE_URL=http[s]://${IRONIC_IP} # required
-export IRONIC_AGENT_IMAGE= ? # required
+The main reconciler loop is vendored from the generic Metal³ implementation.
+Only a custom `ImageProvider` plugin is implemented here.
 
-export IRONIC_AGENT_PULL_SECRET= # optional see cbo
-export IRONIC_RAMDISK_SSH_KEY= # optional see cbo
+## Image building
 
-go1.16 run .
-```
+Network data for each host must be in NMState format, under a key named
+`nmstate` in the Secret specified by the `networkDataName` field in the
+`PreprovisioningImage`.
 
-5. in a new shell
-```
-oc create ns insta-cow
-oc create -f example.yaml
+Note that all `PreprovisioningImage`s with the label
+`infraenvs.agent-install.openshift.io` will be ignored by this controller.
 
-oc get -n insta-cow PreprovisioningImage host-it-34 -o yaml
-apiVersion: metal3.io/v1alpha1
-kind: PreprovisioningImage
-metadata:
-  creationTimestamp: "2021-08-25T04:30:00Z"
-  generation: 1
-  name: host-it-34
-  namespace: insta-cow
-  resourceVersion: "6355704"
-  uid: ea752fba-b6e9-4eca-915a-300a31e4f574
-spec:
-  networkDataName: mysecret
-status:
-  conditions:
-  - lastTransitionTime: "2021-08-25T04:36:20Z"
-    message: Set default image
-    observedGeneration: 1
-    reason: ImageSuccess
-    status: "True"
-    type: Ready
-  - lastTransitionTime: "2021-08-25T04:36:20Z"
-    message: ""
-    observedGeneration: 1
-    reason: ImageSuccess
-    status: "False"
-    type: Error
-  format: iso
-  imageUrl: http://localhost:8083/host-it-34.iso
-  networkData:
-    name: mysecret
-    version: "6349423"
+Generated URLs are random and will change when the controller is restarted.
 
+Only the Ignition file for each image is stored. When an HTTP request is
+received, the web server generates a stream on the fly with a CPIO archive
+containing the Ignition file overlaid on the appropriate portion of the ISO or
+appended to the initramfs. HTTP Range requests are supported.
 
-curl http://localhost:8083/host-it-34.iso --output host-it-34.iso
-  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-                                 Dload  Upload   Total   Spent    Left  Speed
- 93 1058M   93  985M    0     0   738M      0  0:00:01  0:00:01 --:--:--  737M
-curl: (18) transfer closed with 76677120 bytes remaining to read
+## How to run
 
-ls -la host-it-34.iso
--rw-rw-r--. 1 angus angus 1032847360 Aug 25 00:49 host-it-34.iso
-```
+### Environment
+
+The following environment variables are required:
+
+- `IRONIC_AGENT_IMAGE` --- Pullspec for the IPA container image
+- `DEPLOY_ISO` --- Filesystem path to the CoreOS base ISO
+- `DEPLOY_INITRD` --- Filesystem path to the CoreOS initramfs
+
+The following environment variables can also be set to customize the content of
+the Ignition:
+
+- `IRONIC_BASE_URL`
+- `IRONIC_INSPECTOR_BASE_URL`
+- `IRONIC_AGENT_PULL_SECRET`
+- `IRONIC_RAMDISK_SSH_KEY`
+- `REGISTRIES_CONF_PATH`
+- `IP_OPTIONS`
+- `HTTP_PROXY`
+- `HTTPS_PROXY`
+- `NO_PROXY`
+
+### Running the Controller
+
+The controller binary is `/machine-image-customization-controller`.
+
+The following command line flags are used for configuration:
+
+- `-namespace` --- Namespace that the controller watches to reconcile
+  preprovisioningimage resources. (Defaults to `$WATCH_NAMESPACE`; if not set
+  watches all namespaces.)
+- `-images-bind-addr` --- The address and port for the web server to bind to.
+  (Defaults to `:8084`.)
+- `-images-publish-addr` --- The address clients would access the images
+  endpoint from. (Defaults to `http://127.0.0.1:8084`.)
+
+### Running statically
+
+There is also a separate binary, `/machine-image-customization-server`, that
+runs the web server using static config files, instead of as a Kubernetes
+controller.
+
+The following command line flags are used for configuration:
+
+- `-nmstate-dir` --- Location of static NMState files (named with the target
+  image, e.g. `worker-0.yaml`).
+- `-images-bind-addr` --- The address and port for the web server to bind to.
+  (Defaults to `:8084`.)
+- `-images-publish-addr` --- The address clients would access the images
+  endpoint from. (Defaults to `http://127.0.0.1:8084`.)
+
+An NMState file named `<nmstate-dir>/worker-0.yaml` will be built into images
+published at `<images-publish-addr>/worker-0.iso` and
+`<images-publish-addr>/worker-0.initramfs`.
