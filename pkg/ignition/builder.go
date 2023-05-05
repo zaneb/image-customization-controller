@@ -73,6 +73,9 @@ func (b *ignitionBuilder) ProcessNetworkState() (error, string) {
 			}
 			return err, ""
 		}
+		if string(out) == "--- {}\n" {
+			return nil, "no network configuration"
+		}
 		b.networkKeyFiles = out
 	}
 	return nil, ""
