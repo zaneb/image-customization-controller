@@ -15,7 +15,6 @@ require (
 	github.com/openshift/assisted-image-service v0.0.0-20211122133112-1552361c0458
 	github.com/pkg/errors v0.9.1
 	github.com/vincent-petithory/dataurl v0.0.0-20160330182126-9a301d65acbb
-	k8s.io/api v0.22.1
 	k8s.io/apimachinery v0.22.1
 	k8s.io/client-go v0.22.1
 	k8s.io/utils v0.0.0-20210802155522-efc7438f0176
