@@ -36,7 +36,7 @@ func newBaseIso(filename string) *baseIso {
 }
 
 func (biso *baseIso) InsertIgnition(ignition *isoeditor.IgnitionContent) (isoeditor.ImageReader, error) {
-	return isoeditor.NewRHCOSStreamReader(biso.filename, ignition, nil)
+	return isoeditor.NewRHCOSStreamReader(biso.filename, ignition, nil, nil)
 }
 
 type baseInitramfs struct {
