@@ -12,7 +12,7 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/metal3-io/baremetal-operator v0.0.0
 	github.com/metal3-io/baremetal-operator/apis v0.0.0
-	github.com/openshift/assisted-image-service v0.0.0-20220301135350-10a987fbc261
+	github.com/openshift/assisted-image-service v0.0.0-20230508133451-c15a62b72155
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.2
 	github.com/vincent-petithory/dataurl v0.0.0-20160330182126-9a301d65acbb
@@ -59,7 +59,7 @@ require (
 	github.com/daixiang0/gci v0.10.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/denis-tingaikin/go-header v0.4.3 // indirect
-	github.com/diskfs/go-diskfs v1.2.1-0.20210727185522-a769efacd235 // indirect
+	github.com/diskfs/go-diskfs v1.2.1-0.20221201153419-70aa09455238 // indirect
 	github.com/emicklei/go-restful v2.14.2+incompatible // indirect
 	github.com/esimonov/ifshort v1.0.4 // indirect
 	github.com/ettle/strcase v0.1.1 // indirect
