@@ -40,11 +40,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	metal3v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/metal3-io/baremetal-operator/pkg/hardware"
 	"github.com/metal3-io/baremetal-operator/pkg/hardwareutils/bmc"
+	"github.com/metal3-io/baremetal-operator/pkg/imageprovider"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner"
 	"github.com/metal3-io/baremetal-operator/pkg/secretutils"
 	"github.com/metal3-io/baremetal-operator/pkg/utils"
@@ -60,6 +63,7 @@ const (
 	inspectAnnotationPrefix       = "inspect.metal3.io"
 	hardwareDetailsAnnotation     = inspectAnnotationPrefix + "/hardwaredetails"
 	clarifySoftPoweroffFailure    = "Continuing with hard poweroff after soft poweroff fails. More details: "
+	hardwareDataFinalizer         = metal3v1alpha1.BareMetalHostFinalizer + "/hardwareData"
 )
 
 // BareMetalHostReconciler reconciles a BareMetalHost object
@@ -90,6 +94,8 @@ func (info *reconcileInfo) publishEvent(reason, message string) {
 // +kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=metal3.io,resources=preprovisioningimages,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=metal3.io,resources=hardwaredata,verbs=get;list;watch;create;delete;patch;update
+// +kubebuilder:rbac:groups=metal3.io,resources=hardware/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;update
 // +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch
 
@@ -135,38 +141,11 @@ func (r *BareMetalHostReconciler) Reconcile(ctx context.Context, request ctrl.Re
 		}
 	}
 
-	// Check if Status is empty and status annotation is present
-	// Manually restore data.
-	if !r.hostHasStatus(host) {
-		reqLogger.Info("Fetching Status from Annotation")
-		objStatus, err := r.getHostStatusFromAnnotation(host)
-		if err == nil && objStatus != nil {
-			host.Status = *objStatus
-			if host.Status.LastUpdated.IsZero() {
-				// Ensure the LastUpdated timestamp in set to avoid
-				// infinite loops if the annotation only contained
-				// part of the status information.
-				t := metav1.Now()
-				host.Status.LastUpdated = &t
-			}
-			errStatus := r.Status().Update(ctx, host)
-			if errStatus != nil {
-				return ctrl.Result{}, errors.Wrap(errStatus, "Could not restore status from annotation")
-			}
-			return ctrl.Result{Requeue: true}, nil
-		}
-		reqLogger.Info("No status cache found")
-	} else {
-		// The status annotation is unneeded, as the status subresource is
-		// already present. The annotation data will get outdated, so remove it.
-		if _, present := annotations[metal3v1alpha1.StatusAnnotation]; present {
-			delete(annotations, metal3v1alpha1.StatusAnnotation)
-			errStatus := r.Update(ctx, host)
-			if errStatus != nil {
-				return ctrl.Result{}, errors.Wrap(errStatus, "Could not delete status annotation")
-			}
-			return ctrl.Result{Requeue: true}, nil
-		}
+	hostData, err := r.reconciletHostData(ctx, host, request)
+	if err != nil {
+		return ctrl.Result{}, errors.Wrap(err, "Could not reconcile host data")
+	} else if hostData.Requeue {
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Consume hardwaredetails from annotation if present
@@ -313,7 +292,7 @@ func (r *BareMetalHostReconciler) updateHardwareDetails(request ctrl.Request, ho
 			return updated, errors.Wrap(err, "Could not update removing hardwaredetails annotation")
 		}
 		// In the case where the value was not just consumed, generate an event
-		if updated != true {
+		if !updated {
 			r.publishEvent(request, host.NewEvent("RemoveAnnotation", "HardwareDetails annotation ignored, status already set and inspection is not disabled"))
 		}
 	}
@@ -357,10 +336,9 @@ func recordActionFailure(info *reconcileInfo, errorType metal3v1alpha1.ErrorType
 func recordActionDelayed(info *reconcileInfo, state metal3v1alpha1.ProvisioningState) actionResult {
 	var counter prometheus.Counter
 
-	switch state {
-	case metal3v1alpha1.StateDeprovisioning, metal3v1alpha1.StateDeleting:
+	if state == metal3v1alpha1.StateDeprovisioning {
 		counter = delayedDeprovisioningHostCounters.With(hostMetricLabels(info.request))
-	default:
+	} else {
 		counter = delayedProvisioningHostCounters.With(hostMetricLabels(info.request))
 	}
 
@@ -408,18 +386,23 @@ func (r *BareMetalHostReconciler) credentialsErrorResult(err error, request ctrl
 }
 
 // hasRebootAnnotation checks for existence of reboot annotations and returns true if at least one exist
-func hasRebootAnnotation(info *reconcileInfo) (hasReboot bool, rebootMode metal3v1alpha1.RebootMode) {
+func hasRebootAnnotation(info *reconcileInfo, expectForce bool) (hasReboot bool, rebootMode metal3v1alpha1.RebootMode) {
 	rebootMode = metal3v1alpha1.RebootModeSoft
 
 	for annotation, value := range info.host.GetAnnotations() {
 		if isRebootAnnotation(annotation) {
+			newReboot := getRebootAnnotationArguments(value, info)
+			if expectForce && !newReboot.Force {
+				continue
+			}
+
 			hasReboot = true
-			newRebootMode := getRebootMode(value, info)
 			// If any annotation has asked for a hard reboot, that
 			// mode takes precedence.
-			if newRebootMode == metal3v1alpha1.RebootModeHard {
-				rebootMode = newRebootMode
+			if newReboot.Mode == metal3v1alpha1.RebootModeHard {
+				rebootMode = newReboot.Mode
 			}
+
 			// Don't use a break here as we may have multiple clients setting
 			// reboot annotations and we always want hard requests honoured
 		}
@@ -427,21 +410,20 @@ func hasRebootAnnotation(info *reconcileInfo) (hasReboot bool, rebootMode metal3
 	return
 }
 
-func getRebootMode(annotation string, info *reconcileInfo) metal3v1alpha1.RebootMode {
-
+func getRebootAnnotationArguments(annotation string, info *reconcileInfo) (result metal3v1alpha1.RebootAnnotationArguments) {
+	result.Mode = metal3v1alpha1.RebootModeSoft
 	if annotation == "" {
 		info.log.Info("No reboot annotation value specified, assuming soft-reboot.")
-		return metal3v1alpha1.RebootModeSoft
+		return
 	}
 
-	annotations := metal3v1alpha1.RebootAnnotationArguments{}
-	err := json.Unmarshal([]byte(annotation), &annotations)
+	err := json.Unmarshal([]byte(annotation), &result)
 	if err != nil {
 		info.publishEvent("InvalidAnnotationValue", fmt.Sprintf("could not parse reboot annotation (%s) - invalid json, assuming soft-reboot", annotation))
 		info.log.Info(fmt.Sprintf("Could not parse reboot annotation (%q) - invalid json, assuming soft-reboot", annotation))
-		return metal3v1alpha1.RebootModeSoft
+		return
 	}
-	return annotations.Mode
+	return
 }
 
 // isRebootAnnotation returns true if the provided annotation is a reboot annotation (either suffixed or not)
@@ -465,10 +447,7 @@ func clearRebootAnnotations(host *metal3v1alpha1.BareMetalHost) (dirty bool) {
 // which means we don't inspect even in Inspecting state
 func inspectionDisabled(host *metal3v1alpha1.BareMetalHost) bool {
 	annotations := host.GetAnnotations()
-	if annotations[inspectAnnotationPrefix] == "disabled" {
-		return true
-	}
-	return false
+	return annotations[inspectAnnotationPrefix] == "disabled"
 }
 
 // hasInspectAnnotation checks for existence of inspect.metal3.io annotation
@@ -647,7 +626,7 @@ func (r *BareMetalHostReconciler) preprovImageAvailable(info *reconcileInfo, ima
 			Namespace: image.ObjectMeta.Namespace,
 		}
 		secretManager := r.secretManager(info.log)
-		networkData, err := secretManager.AcquireSecret(secretKey, info.host, false, false)
+		networkData, err := secretManager.AcquireSecret(secretKey, info.host, false)
 		if err != nil {
 			return false, err
 		}
@@ -663,12 +642,12 @@ func (r *BareMetalHostReconciler) preprovImageAvailable(info *reconcileInfo, ima
 		return false, nil
 	}
 
-	if errCond := meta.FindStatusCondition(image.Status.Conditions, string(metal3v1alpha1.ConditionImageError)); errCond.Status == metav1.ConditionTrue {
+	if errCond := meta.FindStatusCondition(image.Status.Conditions, string(metal3v1alpha1.ConditionImageError)); errCond != nil && errCond.Status == metav1.ConditionTrue {
 		info.log.Info("error building PreprovisioningImage",
 			"message", errCond.Message)
 		return false, imageBuildError{errCond.Message}
 	}
-	if meta.IsStatusConditionTrue(image.Status.Conditions, string(metal3v1alpha1.ConditionImageReady)) {
+	if readyCond := meta.FindStatusCondition(image.Status.Conditions, string(metal3v1alpha1.ConditionImageReady)); readyCond != nil && readyCond.Status == metav1.ConditionTrue && readyCond.ObservedGeneration == image.Generation {
 		return true, nil
 	}
 
@@ -681,7 +660,7 @@ func getHostArchitecture(host *metal3v1alpha1.BareMetalHost) string {
 		host.Status.HardwareDetails.CPU.Arch != "" {
 		return host.Status.HardwareDetails.CPU.Arch
 	}
-	if hwprof, err := hardware.GetProfile(getHardwareProfileName(host)); err == nil {
+	if hwprof, err := hardware.GetProfile(host.Status.HardwareProfile); err == nil {
 		return hwprof.CPUArch
 	}
 	return ""
@@ -715,6 +694,7 @@ func (r *BareMetalHostReconciler) getPreprovImage(info *reconcileInfo, formats [
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      key.Name,
 				Namespace: key.Namespace,
+				Labels:    info.host.Labels,
 			},
 			Spec: expectedSpec,
 		}
@@ -726,19 +706,38 @@ func (r *BareMetalHostReconciler) getPreprovImage(info *reconcileInfo, formats [
 		return nil, errors.Wrap(err, "failed to retrieve pre-provisioning image data")
 	}
 
+	needsUpdate := false
+	if preprovImage.Labels == nil && len(info.host.Labels) > 0 {
+		preprovImage.Labels = make(map[string]string, len(info.host.Labels))
+	}
+	for k, v := range info.host.Labels {
+		if cur, ok := preprovImage.Labels[k]; !ok || cur != v {
+			preprovImage.Labels[k] = v
+			needsUpdate = true
+		}
+	}
 	if !apiequality.Semantic.DeepEqual(preprovImage.Spec, expectedSpec) {
 		info.log.Info("updating PreprovisioningImage spec")
 		preprovImage.Spec = expectedSpec
+		needsUpdate = true
+	}
+	if needsUpdate {
+		info.log.Info("updating PreprovisioningImage")
 		err = r.Update(context.TODO(), &preprovImage)
 		return nil, err
 	}
+
 	if available, err := r.preprovImageAvailable(info, &preprovImage); err != nil || !available {
 		return nil, err
 	}
 
 	image := provisioner.PreprovisioningImage{
-		ImageURL: preprovImage.Status.ImageUrl,
-		Format:   preprovImage.Status.Format,
+		GeneratedImage: imageprovider.GeneratedImage{
+			ImageURL:          preprovImage.Status.ImageUrl,
+			KernelURL:         preprovImage.Status.KernelUrl,
+			ExtraKernelParams: preprovImage.Status.ExtraKernelParams,
+		},
+		Format: preprovImage.Status.Format,
 	}
 	info.log.Info("using PreprovisioningImage")
 	return &image, nil
@@ -763,10 +762,15 @@ func (r *BareMetalHostReconciler) registerHost(prov provisioner.Provisioner, inf
 		return actionError{err}
 	}
 	switch info.host.Status.Provisioning.State {
-	case metal3v1alpha1.StateRegistering, metal3v1alpha1.StateExternallyProvisioned:
+	case metal3v1alpha1.StateRegistering, metal3v1alpha1.StateExternallyProvisioned, metal3v1alpha1.StateDeleting:
 		// No need to create PreprovisioningImage if host is not yet registered
 		// or is externally provisioned
 		preprovImgFormats = nil
+	case metal3v1alpha1.StateDeprovisioning:
+		// PreprovisioningImage is not required for deprovisioning when cleaning is disabled
+		if info.host.Spec.AutomatedCleaningMode == metal3v1alpha1.CleaningModeDisabled {
+			preprovImgFormats = nil
+		}
 	}
 
 	preprovImg, err := r.getPreprovImage(info, preprovImgFormats)
@@ -828,11 +832,23 @@ func (r *BareMetalHostReconciler) registerHost(prov provisioner.Provisioner, inf
 		return result
 	}
 
+	dirty, err = r.matchProfile(info)
+	if err != nil {
+		return recordActionFailure(info, metal3v1alpha1.RegistrationError, err.Error())
+	}
+	if dirty {
+		return actionUpdate{}
+	}
+
 	// Create the hostFirmwareSettings resource with same host name/namespace if it doesn't exist
 	if info.host.Name != "" {
-		if err = r.createHostFirmwareSettings(info); err != nil {
-			info.log.Info("failed creating hostfirmwaresettings")
-			return actionError{errors.Wrap(err, "failed creating hostFirmwareSettings")}
+		if !info.host.DeletionTimestamp.IsZero() {
+			r.Log.Info(fmt.Sprintf("will not attempt to create new hostFirmwareSettings in %s", info.host.Namespace))
+		} else {
+			if err = r.createHostFirmwareSettings(info); err != nil {
+				info.log.Info("failed creating hostfirmwaresettings")
+				return actionError{errors.Wrap(err, "failed creating hostFirmwareSettings")}
+			}
 		}
 	}
 
@@ -860,6 +876,27 @@ func (r *BareMetalHostReconciler) registerHost(prov provisioner.Provisioner, inf
 	return nil
 }
 
+func updateRootDeviceHints(host *metal3v1alpha1.BareMetalHost, info *reconcileInfo) (dirty bool, err error) {
+	// Ensure the root device hints we're going to use are stored.
+	//
+	// If the user has provided explicit root device hints, they take
+	// precedence. Otherwise use the values from the hardware profile.
+	hintSource := host.Spec.RootDeviceHints
+	if hintSource == nil {
+		hwProf, err := hardware.GetProfile(host.HardwareProfile())
+		if err != nil {
+			return false, errors.Wrap(err, "failed to update root device hints")
+		}
+		hintSource = &hwProf.RootDeviceHints
+	}
+	if !reflect.DeepEqual(hintSource, host.Status.Provisioning.RootDeviceHints) {
+		info.log.Info("RootDeviceHints have changed", "old", host.Status.Provisioning.RootDeviceHints, "new", hintSource)
+		host.Status.Provisioning.RootDeviceHints = hintSource.DeepCopy()
+		dirty = true
+	}
+	return
+}
+
 // Ensure we have the information about the hardware on the host.
 func (r *BareMetalHostReconciler) actionInspecting(prov provisioner.Provisioner, info *reconcileInfo) actionResult {
 	info.log.Info("inspecting hardware")
@@ -873,12 +910,15 @@ func (r *BareMetalHostReconciler) actionInspecting(prov provisioner.Provisioner,
 	info.log.Info("inspecting hardware")
 
 	refresh := hasInspectAnnotation(info.host)
+	forceReboot, _ := hasRebootAnnotation(info, true)
+
 	provResult, started, details, err := prov.InspectHardware(
 		provisioner.InspectData{
 			BootMode: info.host.Status.Provisioning.BootMode,
 		},
 		info.host.Status.ErrorType == metal3v1alpha1.InspectionError,
-		refresh)
+		refresh,
+		forceReboot)
 	if err != nil {
 		return actionError{errors.Wrap(err, "hardware inspection failed")}
 	}
@@ -887,13 +927,26 @@ func (r *BareMetalHostReconciler) actionInspecting(prov provisioner.Provisioner,
 		return recordActionFailure(info, metal3v1alpha1.InspectionError, provResult.ErrorMessage)
 	}
 
-	// Delete inspect annotation if exists
-	if started && hasInspectAnnotation(info.host) {
-		delete(info.host.Annotations, inspectAnnotationPrefix)
-		if err := r.Update(context.TODO(), info.host); err != nil {
-			return actionError{errors.Wrap(err, "failed to remove inspect annotation from host")}
+	if started {
+		dirty := false
+
+		// Delete inspect annotation if exists
+		if hasInspectAnnotation(info.host) {
+			delete(info.host.Annotations, inspectAnnotationPrefix)
+			dirty = true
 		}
-		return actionContinue{}
+
+		// Inspection is either freshly started or was aborted. Either way, remove the reboot annotation.
+		if clearRebootAnnotations(info.host) {
+			dirty = true
+		}
+
+		if dirty {
+			if err := r.Update(context.TODO(), info.host); err != nil {
+				return actionError{errors.Wrap(err, "failed to update the host after inspection start")}
+			}
+			return actionContinue{}
+		}
 	}
 
 	if provResult.Dirty || details == nil {
@@ -906,6 +959,60 @@ func (r *BareMetalHostReconciler) actionInspecting(prov provisioner.Provisioner,
 
 	clearError(info.host)
 	info.host.Status.HardwareDetails = details
+
+	// Create HardwareData with the same name and namesapce as BareMetalHost
+	hardwareData := &metal3v1alpha1.HardwareData{}
+	hardwareDataKey := client.ObjectKey{
+		Name:      info.host.Name,
+		Namespace: info.host.Namespace,
+	}
+	hd := &metal3v1alpha1.HardwareData{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "HardwareData",
+			APIVersion: metal3v1alpha1.GroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      info.host.Name,
+			Namespace: info.host.Namespace,
+			// Register the finalizer immediately
+			Finalizers: []string{
+				hardwareDataFinalizer,
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(info.host, metal3v1alpha1.GroupVersion.WithKind("BareMetalHost")),
+			},
+		},
+		Spec: metal3v1alpha1.HardwareDataSpec{
+			HardwareDetails: details,
+		},
+	}
+
+	err = r.Client.Get(context.Background(), hardwareDataKey, hardwareData)
+	if err == nil || !k8serrors.IsNotFound(err) {
+		// hardwareData found and we reached here due to request for another inspection.
+		// Delete it before re-creating.
+		if controllerutil.ContainsFinalizer(hardwareData, hardwareDataFinalizer) {
+			controllerutil.RemoveFinalizer(hardwareData, hardwareDataFinalizer)
+		}
+		if err := r.Update(context.Background(), hardwareData); err != nil {
+			return actionError{errors.Wrap(err, "failed to remove hardwareData finalizer")}
+		}
+		if err := r.Client.Delete(context.Background(), hd); err != nil {
+			return actionError{errors.Wrap(err, "failed to delete hardwareData")}
+		}
+	}
+
+	if !info.host.DeletionTimestamp.IsZero() {
+		info.log.Info(fmt.Sprintf("will not attempt to create hardwareData in %q", hd.Namespace))
+		return actionComplete{}
+	}
+
+	// either hardwareData was deleted above, or not found. We need to re-create it
+	if err := r.Client.Create(context.Background(), hd); err != nil {
+		return actionError{errors.Wrap(err, "failed to create hardwareData")}
+	}
+	info.log.Info(fmt.Sprintf("Created hardwareData %q in %q namespace\n", hd.Name, hd.Namespace))
+
 	return actionComplete{}
 }
 
@@ -927,31 +1034,35 @@ func getHardwareProfileName(host *metal3v1alpha1.BareMetalHost) string {
 	return hardware.DefaultProfileName
 }
 
-func (r *BareMetalHostReconciler) actionMatchProfile(prov provisioner.Provisioner, info *reconcileInfo) actionResult {
-
+func (r *BareMetalHostReconciler) matchProfile(info *reconcileInfo) (dirty bool, err error) {
 	hardwareProfile := getHardwareProfileName(info.host)
 	info.log.Info("using hardware profile", "profile", hardwareProfile)
 
-	_, err := hardware.GetProfile(hardwareProfile)
+	_, err = hardware.GetProfile(hardwareProfile)
 	if err != nil {
 		info.log.Info("invalid hardware profile", "profile", hardwareProfile)
-		// FIXME(zaneb): This error requires a Spec change to fix, so we
-		// shouldn't treat it as transient
-		return actionError{err}
+		return
 	}
 
 	if info.host.SetHardwareProfile(hardwareProfile) {
+		dirty = true
 		info.log.Info("updating hardware profile", "profile", hardwareProfile)
 		info.publishEvent("ProfileSet", fmt.Sprintf("Hardware profile set: %s", hardwareProfile))
 	}
 
-	return actionComplete{}
+	hintsDirty, err := updateRootDeviceHints(info.host, info)
+	if err != nil {
+		return
+	}
+
+	dirty = dirty || hintsDirty
+	return
 }
 
 func (r *BareMetalHostReconciler) actionPreparing(prov provisioner.Provisioner, info *reconcileInfo) actionResult {
 	info.log.Info("preparing")
 
-	bmhDirty, newStatus, err := getHostProvisioningSettings(info.host)
+	bmhDirty, newStatus, err := getHostProvisioningSettings(info.host, info)
 	if err != nil {
 		return actionError{err}
 	}
@@ -1000,7 +1111,7 @@ func (r *BareMetalHostReconciler) actionPreparing(prov provisioner.Provisioner, 
 
 	if bmhDirty && started {
 		info.log.Info("saving host provisioning settings")
-		_, err := saveHostProvisioningSettings(info.host)
+		_, err := saveHostProvisioningSettings(info.host, info)
 		if err != nil {
 			return actionError{errors.Wrap(err, "could not save the host provisioning settings")}
 		}
@@ -1036,12 +1147,7 @@ func (r *BareMetalHostReconciler) actionProvisioning(prov provisioner.Provisione
 				info.host.HardwareProfile()))}
 	}
 
-	if clearRebootAnnotations(info.host) {
-		if err := r.Update(context.TODO(), info.host); err != nil {
-			return actionError{errors.Wrap(err, "failed to remove reboot annotations from host")}
-		}
-		return actionContinue{}
-	}
+	forceReboot, _ := hasRebootAnnotation(info, true)
 
 	var image metal3v1alpha1.Image
 	if info.host.Spec.Image != nil {
@@ -1055,7 +1161,7 @@ func (r *BareMetalHostReconciler) actionProvisioning(prov provisioner.Provisione
 		BootMode:        info.host.Status.Provisioning.BootMode,
 		HardwareProfile: hwProf,
 		RootDeviceHints: info.host.Status.Provisioning.RootDeviceHints.DeepCopy(),
-	})
+	}, forceReboot)
 	if err != nil {
 		return actionError{errors.Wrap(err, "failed to provision")}
 	}
@@ -1063,6 +1169,13 @@ func (r *BareMetalHostReconciler) actionProvisioning(prov provisioner.Provisione
 	if provResult.ErrorMessage != "" {
 		info.log.Info("handling provisioning error in controller")
 		return recordActionFailure(info, metal3v1alpha1.ProvisioningError, provResult.ErrorMessage)
+	}
+
+	if clearRebootAnnotations(info.host) {
+		if err := r.Update(context.TODO(), info.host); err != nil {
+			return actionError{errors.Wrap(err, "failed to remove reboot annotations from host")}
+		}
+		return actionContinue{}
 	}
 
 	if provResult.Dirty {
@@ -1193,10 +1306,12 @@ func (r *BareMetalHostReconciler) manageHostPower(prov provisioner.Provisioner, 
 	}
 
 	provState := info.host.Status.Provisioning.State
+	// Normal reboots only work in provisioned states, changing online is also possible for available hosts.
 	isProvisioned := provState == metal3v1alpha1.StateProvisioned || provState == metal3v1alpha1.StateExternallyProvisioned
 
-	desiredReboot, desiredRebootMode := hasRebootAnnotation(info)
-	if desiredReboot && isProvisioned {
+	desiredReboot, desiredRebootMode := hasRebootAnnotation(info, !isProvisioned)
+
+	if desiredReboot {
 		desiredPowerOnState = false
 	}
 
@@ -1296,9 +1411,9 @@ func (r *BareMetalHostReconciler) actionManageAvailable(prov provisioner.Provisi
 	return r.manageHostPower(prov, info)
 }
 
-func getHostProvisioningSettings(host *metal3v1alpha1.BareMetalHost) (dirty bool, status *metal3v1alpha1.BareMetalHostStatus, err error) {
+func getHostProvisioningSettings(host *metal3v1alpha1.BareMetalHost, info *reconcileInfo) (dirty bool, status *metal3v1alpha1.BareMetalHostStatus, err error) {
 	hostCopy := host.DeepCopy()
-	dirty, err = saveHostProvisioningSettings(hostCopy)
+	dirty, err = saveHostProvisioningSettings(hostCopy, info)
 	if err != nil {
 		err = errors.Wrap(err, "could not determine the host provisioning settings")
 	}
@@ -1309,23 +1424,11 @@ func getHostProvisioningSettings(host *metal3v1alpha1.BareMetalHost) (dirty bool
 // saveHostProvisioningSettings copies the values related to
 // provisioning that do not trigger re-provisioning into the status
 // fields of the host.
-func saveHostProvisioningSettings(host *metal3v1alpha1.BareMetalHost) (dirty bool, err error) {
-
-	// Ensure the root device hints we're going to use are stored.
-	//
-	// If the user has provided explicit root device hints, they take
-	// precedence. Otherwise use the values from the hardware profile.
-	hintSource := host.Spec.RootDeviceHints
-	if hintSource == nil {
-		hwProf, err := hardware.GetProfile(host.HardwareProfile())
-		if err != nil {
-			return false, errors.Wrap(err, "Could not update root device hints")
-		}
-		hintSource = &hwProf.RootDeviceHints
-	}
-	if (hintSource != nil && host.Status.Provisioning.RootDeviceHints == nil) || *hintSource != *(host.Status.Provisioning.RootDeviceHints) {
-		host.Status.Provisioning.RootDeviceHints = hintSource
-		dirty = true
+func saveHostProvisioningSettings(host *metal3v1alpha1.BareMetalHost, info *reconcileInfo) (dirty bool, err error) {
+	// Root device hints may change as a result of RAID
+	dirty, err = updateRootDeviceHints(host, info)
+	if err != nil {
+		return
 	}
 
 	// Copy RAID settings
@@ -1333,18 +1436,22 @@ func saveHostProvisioningSettings(host *metal3v1alpha1.BareMetalHost) (dirty boo
 	// If RAID configure is nil or empty, means that we need to keep the current hardware RAID configuration
 	// or clear current software RAID configuration
 	if specRAID == nil || reflect.DeepEqual(specRAID, &metal3v1alpha1.RAIDConfig{}) {
-		// Set the default value of RAID configure:
-		// {
-		//     HardwareRAIDVolumes: nil or Status.Provisioning.RAID.HardwareRAIDVolumes(not empty),
-		//     SoftwareRAIDVolume: [],
-		// }
-		specRAID = &metal3v1alpha1.RAIDConfig{}
-		if host.Status.Provisioning.RAID != nil && len(host.Status.Provisioning.RAID.HardwareRAIDVolumes) != 0 {
-			specRAID.HardwareRAIDVolumes = host.Status.Provisioning.RAID.HardwareRAIDVolumes
+		// Short-circuit logic when no RAID is set and no RAID is requested
+		if host.Status.Provisioning.RAID != nil {
+			// Set the default value of RAID configure:
+			// {
+			//     HardwareRAIDVolumes: nil or Status.Provisioning.RAID.HardwareRAIDVolumes(not empty),
+			//     SoftwareRAIDVolume: [],
+			// }
+			specRAID = &metal3v1alpha1.RAIDConfig{}
+			if len(host.Status.Provisioning.RAID.HardwareRAIDVolumes) != 0 {
+				specRAID.HardwareRAIDVolumes = host.Status.Provisioning.RAID.HardwareRAIDVolumes
+			}
+			specRAID.SoftwareRAIDVolumes = []metal3v1alpha1.SoftwareRAIDVolume{}
 		}
-		specRAID.SoftwareRAIDVolumes = []metal3v1alpha1.SoftwareRAIDVolume{}
 	}
 	if !reflect.DeepEqual(host.Status.Provisioning.RAID, specRAID) {
+		info.log.Info("RAID settings have changed", "old", host.Status.Provisioning.RAID, "new", specRAID)
 		host.Status.Provisioning.RAID = specRAID
 		dirty = true
 	}
@@ -1352,6 +1459,7 @@ func saveHostProvisioningSettings(host *metal3v1alpha1.BareMetalHost) (dirty boo
 	// Copy BIOS settings
 	if !reflect.DeepEqual(host.Status.Provisioning.Firmware, host.Spec.Firmware) {
 		host.Status.Provisioning.Firmware = host.Spec.Firmware
+		info.log.Info("Firmware settings have changed")
 		dirty = true
 	}
 
@@ -1408,6 +1516,11 @@ func (r *BareMetalHostReconciler) getHostFirmwareSettings(info *reconcileInfo) (
 
 	// Check if there are settings in the Spec that are different than the Status
 	if meta.IsStatusConditionTrue(hfs.Status.Conditions, string(metal3v1alpha1.FirmwareSettingsChangeDetected)) {
+
+		// Check if the status settings have been populated
+		if len(hfs.Status.Settings) == 0 {
+			return false, nil, errors.New("host firmware status settings not available")
+		}
 
 		if meta.IsStatusConditionTrue(hfs.Status.Conditions, string(metal3v1alpha1.FirmwareSettingsValid)) {
 			info.log.Info("hostFirmwareSettings indicating ChangeDetected", "namespacename", info.request.NamespacedName)
@@ -1497,7 +1610,7 @@ func (r *BareMetalHostReconciler) getBMCSecretAndSetOwner(request ctrl.Request, 
 	reqLogger := r.Log.WithValues("baremetalhost", request.NamespacedName)
 	secretManager := r.secretManager(reqLogger)
 
-	bmcCredsSecret, err := secretManager.AcquireSecret(host.CredentialsKey(), host, true, host.Status.Provisioning.State != metal3v1alpha1.StateDeleting)
+	bmcCredsSecret, err := secretManager.AcquireSecret(host.CredentialsKey(), host, host.Status.Provisioning.State != metal3v1alpha1.StateDeleting)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil, &ResolveBMCSecretRefError{message: fmt.Sprintf("The BMC secret %s does not exist", host.CredentialsKey())}
@@ -1629,11 +1742,84 @@ func (r *BareMetalHostReconciler) SetupWithManager(mgr ctrl.Manager, preprovImgE
 				UpdateFunc: r.updateEventHandler,
 			}).
 		WithOptions(opts).
-		Owns(&corev1.Secret{})
+		Watches(&source.Kind{Type: &corev1.Secret{}},
+			&handler.EnqueueRequestForOwner{OwnerType: &metal3v1alpha1.BareMetalHost{}})
 
 	if preprovImgEnable {
 		controller.Owns(&metal3v1alpha1.PreprovisioningImage{})
 	}
 
 	return controller.Complete(r)
+}
+
+func (r *BareMetalHostReconciler) reconciletHostData(ctx context.Context, host *metal3v1alpha1.BareMetalHost, request ctrl.Request) (result ctrl.Result, err error) {
+
+	reqLogger := r.Log.WithValues("baremetalhost", request.NamespacedName)
+
+	// Fetch the HardwareData
+	hardwareData := &metal3v1alpha1.HardwareData{}
+	hardwareDataKey := client.ObjectKey{
+		Name:      host.Name,
+		Namespace: host.Namespace,
+	}
+	err = r.Get(ctx, hardwareDataKey, hardwareData)
+	if err != nil && !k8serrors.IsNotFound(err) {
+		reqLogger.Error(err, "failed to find hardwareData")
+	}
+
+	// Host is being deleted, so we delete the finalizer from the hardwareData to allow its deletion.
+	if !host.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(hardwareData, hardwareDataFinalizer) {
+			controllerutil.RemoveFinalizer(hardwareData, hardwareDataFinalizer)
+			reqLogger.Info("removing finalizer from hardwareData")
+			if err := r.Update(context.Background(), hardwareData); err != nil {
+				return ctrl.Result{}, errors.Wrap(err, "failed to remove hardwareData finalizer")
+			}
+		}
+		reqLogger.Info("hardwareData is ready to be deleted")
+	}
+
+	// Check if Status is empty and status annotation is present
+	// Manually restore data.
+	if !r.hostHasStatus(host) {
+		reqLogger.Info("Reconstructing Status from hardwareData and annotation")
+		objStatus, err := r.getHostStatusFromAnnotation(host)
+
+		if err == nil && objStatus != nil {
+			// hardwareData takes predence over statusAnnotation data
+			if hardwareData.Spec.HardwareDetails != nil && objStatus.HardwareDetails != hardwareData.Spec.HardwareDetails {
+				objStatus.HardwareDetails = hardwareData.Spec.HardwareDetails
+			}
+
+			host.Status = *objStatus
+			if host.Status.LastUpdated.IsZero() {
+				// Ensure the LastUpdated timestamp is set to avoid
+				// infinite loops if the annotation only contained
+				// part of the status information.
+				t := metav1.Now()
+				host.Status.LastUpdated = &t
+			}
+			errStatus := r.Status().Update(ctx, host)
+			if errStatus != nil {
+				return ctrl.Result{}, errors.Wrap(errStatus, "Could not restore status from annotation")
+			}
+			return ctrl.Result{Requeue: true}, nil
+		}
+		reqLogger.Info("No status cache found")
+
+	}
+	// The status annotation is unneeded, as the status subresource is
+	// already present. The annotation data will get outdated, so remove it.
+	annotations := host.GetAnnotations()
+	if _, present := annotations[metal3v1alpha1.StatusAnnotation]; present {
+		delete(annotations, metal3v1alpha1.StatusAnnotation)
+		errStatus := r.Update(ctx, host)
+		if errStatus != nil {
+			return ctrl.Result{}, errors.Wrap(errStatus, "Could not delete status annotation")
+		}
+		reqLogger.Info("deleted status annotation")
+		return ctrl.Result{Requeue: true}, nil
+	}
+	return ctrl.Result{}, nil
+
 }

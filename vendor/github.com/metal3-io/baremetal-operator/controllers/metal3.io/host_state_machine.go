@@ -1,11 +1,13 @@
 package controllers
 
 import (
+	"encoding/json"
 	"fmt"
 
 	metal3v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner"
 
+	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -44,7 +46,7 @@ func (hsm *hostStateMachine) handlers() map[metal3v1alpha1.ProvisioningState]sta
 		metal3v1alpha1.StateRegistering:           hsm.handleRegistering,
 		metal3v1alpha1.StateInspecting:            hsm.handleInspecting,
 		metal3v1alpha1.StateExternallyProvisioned: hsm.handleExternallyProvisioned,
-		metal3v1alpha1.StateMatchProfile:          hsm.handleMatchProfile,
+		metal3v1alpha1.StateMatchProfile:          hsm.handleMatchProfile, // Backward compatibility, remove eventually
 		metal3v1alpha1.StatePreparing:             hsm.handlePreparing,
 		metal3v1alpha1.StateAvailable:             hsm.handleAvailable,
 		metal3v1alpha1.StateReady:                 hsm.handleAvailable,
@@ -102,7 +104,7 @@ func (hsm *hostStateMachine) updateHostStateFrom(initialState metal3v1alpha1.Pro
 		// avoid putting an excessive pressure on the provisioner
 		switch hsm.NextState {
 		case metal3v1alpha1.StateInspecting, metal3v1alpha1.StateProvisioning,
-			metal3v1alpha1.StateDeprovisioning, metal3v1alpha1.StateDeleting:
+			metal3v1alpha1.StateDeprovisioning:
 			if actionRes := hsm.ensureCapacity(info, hsm.NextState); actionRes != nil {
 				return actionRes
 			}
@@ -159,7 +161,7 @@ func (hsm *hostStateMachine) checkDelayedHost(info *reconcileInfo) actionResult 
 	// host not yet tracked by the provisioner
 	switch info.host.Status.Provisioning.State {
 	case metal3v1alpha1.StateInspecting, metal3v1alpha1.StateProvisioning,
-		metal3v1alpha1.StateDeprovisioning, metal3v1alpha1.StateDeleting:
+		metal3v1alpha1.StateDeprovisioning:
 		if actionRes := hsm.ensureCapacity(info, info.host.Status.Provisioning.State); actionRes != nil {
 			return actionRes
 		}
@@ -181,7 +183,7 @@ func (hsm *hostStateMachine) ReconcileState(info *reconcileInfo) (actionRes acti
 		return delayedResult
 	}
 
-	if hsm.checkInitiateDelete() {
+	if hsm.checkInitiateDelete(info.log) {
 		info.log.Info("Initiating host deletion")
 		return actionComplete{}
 	}
@@ -213,7 +215,7 @@ func updateBootModeStatus(host *metal3v1alpha1.BareMetalHost) bool {
 	return true
 }
 
-func (hsm *hostStateMachine) checkInitiateDelete() bool {
+func (hsm *hostStateMachine) checkInitiateDelete(log logr.Logger) bool {
 	if hsm.Host.DeletionTimestamp.IsZero() {
 		// Delete not requested
 		return false
@@ -224,6 +226,11 @@ func (hsm *hostStateMachine) checkInitiateDelete() bool {
 		hsm.NextState = metal3v1alpha1.StateDeleting
 	case metal3v1alpha1.StateProvisioning, metal3v1alpha1.StateProvisioned:
 		if hsm.Host.OperationalStatus() == metal3v1alpha1.OperationalStatusDetached {
+			if delayDeleteForDetachedHost(hsm.Host) {
+				log.Info("Delaying detached host deletion")
+				deleteDelayedForDetached.Inc()
+				return false
+			}
 			hsm.NextState = metal3v1alpha1.StateDeleting
 		} else {
 			hsm.NextState = metal3v1alpha1.StateDeprovisioning
@@ -238,7 +245,7 @@ func (hsm *hostStateMachine) checkInitiateDelete() bool {
 	return true
 }
 
-// hasInspectAnnotation checks for existence of baremetalhost.metal3.io/detached
+// hasDetachedAnnotation checks for existence of baremetalhost.metal3.io/detached
 func hasDetachedAnnotation(host *metal3v1alpha1.BareMetalHost) bool {
 	annotations := host.GetAnnotations()
 	if annotations != nil {
@@ -247,6 +254,27 @@ func hasDetachedAnnotation(host *metal3v1alpha1.BareMetalHost) bool {
 		}
 	}
 	return false
+}
+
+func delayDeleteForDetachedHost(host *metal3v1alpha1.BareMetalHost) bool {
+	annotations := host.GetAnnotations()
+	args := metal3v1alpha1.DetachedAnnotationArguments{}
+	val, present := annotations[metal3v1alpha1.DetachedAnnotation]
+
+	// if the host is detached, but missing the annotation, also delay delete
+	// to allow for the host to be re-attached
+	if !present && host.OperationalStatus() == metal3v1alpha1.OperationalStatusDetached {
+		return true
+	}
+
+	if present {
+		if err := json.Unmarshal([]byte(val), &args); err != nil {
+			// default behavior if these are missing or not json is to not delay
+			return false
+		}
+	}
+
+	return args.DeleteAction == metal3v1alpha1.DetachedDeleteActionDelay
 }
 
 func (hsm *hostStateMachine) checkDetachedHost(info *reconcileInfo) (result actionResult) {
@@ -292,13 +320,27 @@ func (hsm *hostStateMachine) ensureRegistered(info *reconcileInfo) (result actio
 		// to register the Host.
 		return
 	case metal3v1alpha1.StateMatchProfile:
-		// We don't call the provisioner in this state, so there is no point
-		// in checking the registration.
+		// Backward compatibility, remove eventually
 		return
 	case metal3v1alpha1.StateDeleting:
 		// In the deleting state the whole idea is to de-register the host
 		return
 	case metal3v1alpha1.StateRegistering:
+	case metal3v1alpha1.StateInspecting, metal3v1alpha1.StatePreparing:
+		// The Infrastructure operator in RHACM <=2.4 does not supply a
+		// controller for PreprovisioningImages with an InfraEnv label, (which
+		// the default controller ignores) but an image will be required
+		// if we register in the Preparing state. We know that this version
+		// never has work to do in Preparing, so it is safe to disable
+		// registration in that state. In later versions, where the controller
+		// is available and we need images, inspection will not be disabled.
+		if _, hasInfraEnv := hsm.Host.Labels["infraenvs.agent-install.openshift.io"]; hsm.NextState == metal3v1alpha1.StateInspecting || hasInfraEnv {
+			if inspectionDisabled(hsm.Host) {
+				// No need to register if we are not actually going to inspect
+				return
+			}
+		}
+		fallthrough
 	default:
 		if hsm.Host.Status.ErrorType == metal3v1alpha1.RegistrationError ||
 			!hsm.Host.Status.GoodCredentials.Match(*info.bmcCredsSecret) {
@@ -349,6 +391,8 @@ func (hsm *hostStateMachine) handleRegistering(info *reconcileInfo) actionResult
 	// if the credentials change and the Host must be re-registered.
 	if hsm.Host.Spec.ExternallyProvisioned {
 		hsm.NextState = metal3v1alpha1.StateExternallyProvisioned
+	} else if inspectionDisabled(hsm.Host) {
+		hsm.NextState = metal3v1alpha1.StatePreparing
 	} else {
 		hsm.NextState = metal3v1alpha1.StateInspecting
 	}
@@ -359,19 +403,17 @@ func (hsm *hostStateMachine) handleRegistering(info *reconcileInfo) actionResult
 func (hsm *hostStateMachine) handleInspecting(info *reconcileInfo) actionResult {
 	actResult := hsm.Reconciler.actionInspecting(hsm.Provisioner, info)
 	if _, complete := actResult.(actionComplete); complete {
-		hsm.NextState = metal3v1alpha1.StateMatchProfile
+		hsm.NextState = metal3v1alpha1.StatePreparing
 		hsm.Host.Status.ErrorCount = 0
 	}
 	return actResult
 }
 
 func (hsm *hostStateMachine) handleMatchProfile(info *reconcileInfo) actionResult {
-	actResult := hsm.Reconciler.actionMatchProfile(hsm.Provisioner, info)
-	if _, complete := actResult.(actionComplete); complete {
-		hsm.NextState = metal3v1alpha1.StatePreparing
-		hsm.Host.Status.ErrorCount = 0
-	}
-	return actResult
+	// Backward compatibility, remove eventually
+	hsm.NextState = metal3v1alpha1.StatePreparing
+	hsm.Host.Status.ErrorCount = 0
+	return actionComplete{}
 }
 
 func (hsm *hostStateMachine) handleExternallyProvisioned(info *reconcileInfo) actionResult {
@@ -380,12 +422,10 @@ func (hsm *hostStateMachine) handleExternallyProvisioned(info *reconcileInfo) ac
 		return hsm.Reconciler.actionManageSteadyState(hsm.Provisioner, info)
 	}
 
-	switch {
-	case hsm.Host.NeedsHardwareInspection():
+	// TODO(dtantsur): move this logic inside NeedsHardwareInspection?
+	if hsm.Host.NeedsHardwareInspection() && !inspectionDisabled(hsm.Host) {
 		hsm.NextState = metal3v1alpha1.StateInspecting
-	case hsm.Host.NeedsHardwareProfile():
-		hsm.NextState = metal3v1alpha1.StateMatchProfile
-	default:
+	} else {
 		hsm.NextState = metal3v1alpha1.StatePreparing
 	}
 	return actionComplete{}
@@ -412,7 +452,7 @@ func (hsm *hostStateMachine) handleAvailable(info *reconcileInfo) actionResult {
 		return actionComplete{}
 	}
 
-	if dirty, _, err := getHostProvisioningSettings(info.host); err != nil {
+	if dirty, _, err := getHostProvisioningSettings(info.host, info); err != nil {
 		return actionError{err}
 	} else if dirty {
 		hsm.NextState = metal3v1alpha1.StatePreparing
@@ -520,6 +560,8 @@ func (hsm *hostStateMachine) handleDeprovisioning(info *reconcileInfo) actionRes
 			// If the provisioner gives up deprovisioning and
 			// deletion has been requested, continue to delete.
 			if hsm.Host.Status.ErrorCount > 3 {
+				info.log.Info("Giving up on host clean up after 3 attempts. The host may still be operational " +
+					"and cause issues in your clusters. You should clean it up manually now.")
 				return skipToDelete()
 			}
 		case actionError:
