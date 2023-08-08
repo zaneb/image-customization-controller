@@ -47,7 +47,7 @@ WantedBy=multi-user.target
 
 	return ignition_config_types_32.Unit{
 		Name:     "ironic-agent.service",
-		Enabled:  pointer.BoolPtr(true),
+		Enabled:  pointer.Bool(true),
 		Contents: &contents,
 	}
 }
