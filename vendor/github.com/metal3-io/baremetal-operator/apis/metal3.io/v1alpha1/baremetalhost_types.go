@@ -47,13 +47,27 @@ const (
 	// annotation is present and status is empty, BMO will reconstruct BMH Status
 	// from the status annotation.
 	StatusAnnotation = "baremetalhost.metal3.io/status"
+
+	// RebootAnnotationPrefix is the annotation which tells the host which mode to use
+	// when rebooting - hard/soft
+	RebootAnnotationPrefix = "reboot.metal3.io"
+
+	// InspectAnnotationPrefix is used to specify if automatic introspection carried out
+	// during registration of BMH is enabled or disabled
+	InspectAnnotationPrefix = "inspect.metal3.io"
+
+	// HardwareDetailsAnnotation provides the hardware details for the host
+	// in case its not already part of the host status and when introspection
+	// is disabed
+	HardwareDetailsAnnotation = InspectAnnotationPrefix + "/hardwaredetails"
 )
 
 // RootDeviceHints holds the hints for specifying the storage location
 // for the root filesystem for the image.
 type RootDeviceHints struct {
-	// A Linux device name like "/dev/vda". The hint must match the
-	// actual value exactly.
+	// A Linux device name like "/dev/vda", or a by-path link to it like
+	// "/dev/disk/by-path/pci-0000:01:00.0-scsi-0:2:0:0". The hint must match
+	// the actual value exactly.
 	DeviceName string `json:"deviceName,omitempty"`
 
 	// A SCSI bus address like 0:0:0:0. The hint must match the actual
@@ -130,6 +144,9 @@ const (
 	OperationalStatusDetached OperationalStatus = "detached"
 )
 
+// OperationalStatusAllowed represents the allowed values of OperationalStatus
+var OperationalStatusAllowed = []string{"", string(OperationalStatusOK), string(OperationalStatusDiscovered), string(OperationalStatusError), string(OperationalStatusDelayed), string(OperationalStatusDetached)}
+
 // ErrorType indicates the class of problem that has caused the Host resource
 // to enter an error state.
 type ErrorType string
@@ -159,6 +176,9 @@ const (
 	DetachError ErrorType = "detach error"
 )
 
+// ErrorTypeAllowed represents the allowed values of ErrorType
+var ErrorTypeAllowed = []string{"", string(ProvisionedRegistrationError), string(RegistrationError), string(InspectionError), string(PreparationError), string(ProvisioningError), string(PowerManagementError)}
+
 // ProvisioningState defines the states the provisioner will report
 // the host has having.
 type ProvisioningState string
@@ -174,8 +194,8 @@ const (
 	// StateRegistering means we are telling the backend about the host
 	StateRegistering ProvisioningState = "registering"
 
-	// StateMatchProfile means we are comparing the discovered details
-	// against known hardware profiles
+	// StateMatchProfile used to mean we are assigning a profile.
+	// It no longer does anything, profile matching is done on registration
 	StateMatchProfile ProvisioningState = "match profile"
 
 	// StatePreparing means we are removing existing configuration and set new configuration to the host
@@ -206,6 +226,10 @@ const (
 	// StateInspecting means we are running the agent on the host to
 	// learn about the hardware components available there
 	StateInspecting ProvisioningState = "inspecting"
+
+	// StatePoweringOffBeforeDelete means we are in the process of
+	// powering off the node before it's deleted.
+	StatePoweringOffBeforeDelete ProvisioningState = "powering off before delete"
 
 	// StateDeleting means we are in the process of cleaning up the host
 	// ready for deletion
@@ -657,7 +681,20 @@ const (
 
 // RebootAnnotationArguments defines the arguments of the RebootAnnotation type
 type RebootAnnotationArguments struct {
-	Mode RebootMode `json:"mode"`
+	Mode  RebootMode `json:"mode"`
+	Force bool       `json:"force"`
+}
+
+type DetachedDeleteAction string
+
+const (
+	DetachedDeleteActionDelay  = "delay"
+	DetachedDeleteActionDelete = "delete"
+)
+
+type DetachedAnnotationArguments struct {
+	// DeleteAction indicates the desired delete logic when the detached annotation is present
+	DeleteAction DetachedDeleteAction `json:"deleteAction,omitempty"`
 }
 
 // Match compares the saved status information with the name and

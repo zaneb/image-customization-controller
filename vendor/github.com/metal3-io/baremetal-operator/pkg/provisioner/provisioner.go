@@ -6,9 +6,10 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	metal3v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	"github.com/metal3-io/baremetal-operator/pkg/hardware"
+	metal3api "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
+	"github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1/profile"
 	"github.com/metal3-io/baremetal-operator/pkg/hardwareutils/bmc"
+	"github.com/metal3-io/baremetal-operator/pkg/imageprovider"
 )
 
 /*
@@ -28,7 +29,7 @@ type HostData struct {
 	ProvisionerID                  string
 }
 
-func BuildHostData(host metal3v1alpha1.BareMetalHost, bmcCreds bmc.Credentials) HostData {
+func BuildHostData(host metal3api.BareMetalHost, bmcCreds bmc.Credentials) HostData {
 	return HostData{
 		ObjectMeta:                     *host.ObjectMeta.DeepCopy(),
 		BMCAddress:                     host.Spec.BMC.Address,
@@ -40,7 +41,7 @@ func BuildHostData(host metal3v1alpha1.BareMetalHost, bmcCreds bmc.Credentials) 
 }
 
 // For controllers that do not need to manage the BMC just set the host and node ID to use with Ironic API
-func BuildHostDataNoBMC(host metal3v1alpha1.BareMetalHost) HostData {
+func BuildHostDataNoBMC(host metal3api.BareMetalHost) HostData {
 	return HostData{
 		ObjectMeta:    *host.ObjectMeta.DeepCopy(),
 		ProvisionerID: host.Status.Provisioning.ID,
@@ -68,25 +69,25 @@ type HostConfigData interface {
 }
 
 type PreprovisioningImage struct {
-	ImageURL string
-	Format   metal3v1alpha1.ImageFormat
+	imageprovider.GeneratedImage
+	Format metal3api.ImageFormat
 }
 
 type ManagementAccessData struct {
-	BootMode              metal3v1alpha1.BootMode
-	AutomatedCleaningMode metal3v1alpha1.AutomatedCleaningMode
-	State                 metal3v1alpha1.ProvisioningState
-	CurrentImage          *metal3v1alpha1.Image
+	BootMode              metal3api.BootMode
+	AutomatedCleaningMode metal3api.AutomatedCleaningMode
+	State                 metal3api.ProvisioningState
+	CurrentImage          *metal3api.Image
 	PreprovisioningImage  *PreprovisioningImage
 	HasCustomDeploy       bool
 }
 
 type AdoptData struct {
-	State metal3v1alpha1.ProvisioningState
+	State metal3api.ProvisioningState
 }
 
 type InspectData struct {
-	BootMode metal3v1alpha1.BootMode
+	BootMode metal3api.BootMode
 }
 
 // FirmwareConfig and FirmwareSettings are used for implementation of similar functionality
@@ -96,21 +97,21 @@ type InspectData struct {
 // values are vendor specific.
 // TargetFirmwareSettings contains values that the user has changed.
 type PrepareData struct {
-	TargetRAIDConfig       *metal3v1alpha1.RAIDConfig
-	ActualRAIDConfig       *metal3v1alpha1.RAIDConfig
-	RootDeviceHints        *metal3v1alpha1.RootDeviceHints
-	FirmwareConfig         *metal3v1alpha1.FirmwareConfig
-	TargetFirmwareSettings metal3v1alpha1.DesiredSettingsMap
-	ActualFirmwareSettings metal3v1alpha1.SettingsMap
+	TargetRAIDConfig       *metal3api.RAIDConfig
+	ActualRAIDConfig       *metal3api.RAIDConfig
+	RootDeviceHints        *metal3api.RootDeviceHints
+	FirmwareConfig         *metal3api.FirmwareConfig
+	TargetFirmwareSettings metal3api.DesiredSettingsMap
+	ActualFirmwareSettings metal3api.SettingsMap
 }
 
 type ProvisionData struct {
-	Image           metal3v1alpha1.Image
+	Image           metal3api.Image
 	HostConfig      HostConfigData
-	BootMode        metal3v1alpha1.BootMode
-	HardwareProfile hardware.Profile
-	RootDeviceHints *metal3v1alpha1.RootDeviceHints
-	CustomDeploy    *metal3v1alpha1.CustomDeploy
+	BootMode        metal3api.BootMode
+	HardwareProfile profile.Profile
+	RootDeviceHints *metal3api.RootDeviceHints
+	CustomDeploy    *metal3api.CustomDeploy
 }
 
 type HTTPHeaders []map[string]string
@@ -124,18 +125,18 @@ type Provisioner interface {
 	// of credentials it has are different from the credentials it has
 	// previously been using, without implying that either set of
 	// credentials is correct.
-	ValidateManagementAccess(data ManagementAccessData, credentialsChanged, force bool) (result Result, provID string, err error)
+	ValidateManagementAccess(data ManagementAccessData, credentialsChanged, restartOnFailure bool) (result Result, provID string, err error)
 
 	// PreprovisioningImageFormats returns a list of acceptable formats for a
 	// pre-provisioning image to be built by a PreprovisioningImage object. The
 	// list should be nil if no image build is requested.
-	PreprovisioningImageFormats() ([]metal3v1alpha1.ImageFormat, error)
+	PreprovisioningImageFormats() ([]metal3api.ImageFormat, error)
 
 	// InspectHardware updates the HardwareDetails field of the host with
 	// details of devices discovered on the hardware. It may be called
 	// multiple times, and should return true for its dirty flag until the
 	// inspection is completed.
-	InspectHardware(data InspectData, force, refresh bool) (result Result, started bool, details *metal3v1alpha1.HardwareDetails, err error)
+	InspectHardware(data InspectData, restartOnFailure, refresh, forceReboot bool) (result Result, started bool, details *metal3api.HardwareDetails, err error)
 
 	// UpdateHardwareState fetches the latest hardware state of the
 	// server and updates the HardwareDetails field of the host with
@@ -145,20 +146,20 @@ type Provisioner interface {
 
 	// Adopt brings an externally-provisioned host under management by
 	// the provisioner.
-	Adopt(data AdoptData, force bool) (result Result, err error)
+	Adopt(data AdoptData, restartOnFailure bool) (result Result, err error)
 
 	// Prepare remove existing configuration and set new configuration
-	Prepare(data PrepareData, unprepared bool, force bool) (result Result, started bool, err error)
+	Prepare(data PrepareData, unprepared bool, restartOnFailure bool) (result Result, started bool, err error)
 
 	// Provision writes the image from the host spec to the host. It
 	// may be called multiple times, and should return true for its
 	// dirty flag until the provisioning operation is completed.
-	Provision(data ProvisionData) (result Result, err error)
+	Provision(data ProvisionData, forceReboot bool) (result Result, err error)
 
 	// Deprovision removes the host from the image. It may be called
 	// multiple times, and should return true for its dirty flag until
 	// the deprovisioning operation is completed.
-	Deprovision(force bool) (result Result, err error)
+	Deprovision(restartOnFailure bool) (result Result, err error)
 
 	// Delete removes the host from the provisioning system. It may be
 	// called multiple times, and should return true for its dirty
@@ -179,7 +180,7 @@ type Provisioner interface {
 	// PowerOff ensures the server is powered off independently of any image
 	// provisioning operation. The boolean argument may be used to specify
 	// if a hard reboot (force power off) is required - true if so.
-	PowerOff(rebootMode metal3v1alpha1.RebootMode, force bool) (result Result, err error)
+	PowerOff(rebootMode metal3api.RebootMode, force bool) (result Result, err error)
 
 	// IsReady checks if the provisioning backend is available to accept
 	// all the incoming requests.
@@ -189,13 +190,13 @@ type Provisioner interface {
 	HasCapacity() (result bool, err error)
 
 	// GetFirmwareSettings gets the BIOS settings and optional schema from the host and returns maps
-	GetFirmwareSettings(includeSchema bool) (settings metal3v1alpha1.SettingsMap, schema map[string]metal3v1alpha1.SettingSchema, err error)
+	GetFirmwareSettings(includeSchema bool) (settings metal3api.SettingsMap, schema map[string]metal3api.SettingSchema, err error)
 
 	// AddBMCEventSubscriptionForNode creates the subscription, and updates Status.SubscriptionID
-	AddBMCEventSubscriptionForNode(subscription *metal3v1alpha1.BMCEventSubscription, httpHeaders HTTPHeaders) (result Result, err error)
+	AddBMCEventSubscriptionForNode(subscription *metal3api.BMCEventSubscription, httpHeaders HTTPHeaders) (result Result, err error)
 
 	// RemoveBMCEventSubscriptionForNode delete the subscription
-	RemoveBMCEventSubscriptionForNode(subscription metal3v1alpha1.BMCEventSubscription) (result Result, err error)
+	RemoveBMCEventSubscriptionForNode(subscription metal3api.BMCEventSubscription) (result Result, err error)
 }
 
 // Result holds the response from a call in the Provsioner API.
