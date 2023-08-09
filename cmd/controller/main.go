@@ -30,6 +30,7 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -80,8 +81,8 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 	}
 
 	cacheOptions := cache.Options{
-		SelectorsByObject: secretutils.AddSecretSelector(cache.SelectorsByObject{
-			&metal3iov1alpha1.PreprovisioningImage{}: cache.ObjectSelector{
+		ByObject: secretutils.AddSecretSelector(map[client.Object]cache.ByObject{
+			&metal3iov1alpha1.PreprovisioningImage{}: {
 				Label: labels.NewSelector().Add(*excludeInfraEnv),
 			},
 		}),
@@ -91,7 +92,7 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 		Scheme:    scheme,
 		Port:      0, // Add flag with default of 9443 when adding webhooks
 		Namespace: watchNamespace,
-		NewCache:  cache.BuilderWithOptions(cacheOptions),
+		Cache:     cacheOptions,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
