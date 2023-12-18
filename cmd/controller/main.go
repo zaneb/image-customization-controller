@@ -155,6 +155,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	// If not defined via env var, look for the mounted secret file
+	if envInputs.IronicAgentPullSecret == "" {
+		pullSecretRaw, err := os.ReadFile("/run/secrets/pull-secret")
+		if err != nil {
+			setupLog.Error(err, "unable to read secret from mounted file")
+			os.Exit(1)
+		}
+		envInputs.IronicAgentPullSecret = string(pullSecretRaw)
+	}
+
 	imageServer := imagehandler.NewImageHandler(ctrl.Log.WithName("ImageHandler"), envInputs.DeployISO, envInputs.DeployInitrd, publishURL)
 	http.Handle("/", http.FileServer(imageServer.FileSystem()))
 
