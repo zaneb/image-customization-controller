@@ -73,7 +73,7 @@ func setupChecks(mgr ctrl.Manager) error {
 	return nil
 }
 
-func runController(watchNamespace string, imageServer imagehandler.ImageHandler, envInputs *env.EnvInputs) error {
+func runController(watchNamespace string, imageServer imagehandler.ImageHandler, envInputs *env.EnvInputs, metricsBindAddr string) error {
 	excludeInfraEnv, err := labels.NewRequirement(infraEnvLabel, selection.DoesNotExist, nil)
 	if err != nil {
 		setupLog.Error(err, "cannot create an infraenv label filter")
@@ -89,10 +89,11 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:    scheme,
-		Port:      0, // Add flag with default of 9443 when adding webhooks
-		Namespace: watchNamespace,
-		Cache:     cacheOptions,
+		Scheme:             scheme,
+		Port:               0, // Add flag with default of 9443 when adding webhooks
+		Namespace:          watchNamespace,
+		Cache:              cacheOptions,
+		MetricsBindAddress: metricsBindAddr,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -123,6 +124,7 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 
 func main() {
 	var watchNamespace string
+	var metricsBindAddr string
 	var devLogging bool
 	var imagesBindAddr string
 	var imagesPublishAddr string
@@ -133,6 +135,8 @@ func main() {
 	// namespace.
 	flag.StringVar(&watchNamespace, "namespace", os.Getenv("WATCH_NAMESPACE"),
 		"Namespace that the controller watches to reconcile preprovisioningimage resources.")
+	flag.StringVar(&metricsBindAddr, "metrics-addr", "",
+		"The address the metric endpoint binds to.")
 	flag.StringVar(&imagesBindAddr, "images-bind-addr", ":8084",
 		"The address the images endpoint binds to.")
 	flag.StringVar(&imagesPublishAddr, "images-publish-addr", "http://127.0.0.1:8084",
@@ -182,7 +186,7 @@ func main() {
 		}
 	}()
 
-	if err := runController(watchNamespace, imageServer, envInputs); err != nil {
+	if err := runController(watchNamespace, imageServer, envInputs, metricsBindAddr); err != nil {
 		setupLog.Error(err, "problem running controller")
 		os.Exit(1)
 	}
