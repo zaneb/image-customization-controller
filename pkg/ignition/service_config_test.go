@@ -6,6 +6,7 @@ import (
 
 	ignition_config_types_32 "github.com/coreos/ignition/v2/config/v3_2/types"
 	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/assert"
 	"k8s.io/utils/pointer"
 )
 
@@ -28,7 +29,7 @@ func TestIronicPythonAgentConf(t *testing.T) {
 				Node: ignition_config_types_32.Node{Path: "/etc/ironic-python-agent.conf", Overwrite: &expectedOverwrite},
 				FileEmbedded1: ignition_config_types_32.FileEmbedded1{
 					Contents: ignition_config_types_32.Resource{
-						Source: pointer.String("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2Fexample.com%2Ffoo%3A6385%0Ainspection_callback_url%20%3D%20http%3A%2F%2Fexample.com%2Fbar%3A5050%2Fv1%2Fcontinue%0Ainsecure%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20all%0A")},
+						Source: pointer.String("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2Fexample.com%3A6385%2Ffoo%0Ainspection_callback_url%20%3D%20http%3A%2F%2Fexample.com%3A5050%2Fbar%2Fv1%2Fcontinue%0Ainsecure%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20all%0A")},
 					Mode: &expectedMode},
 			},
 		},
@@ -41,7 +42,20 @@ func TestIronicPythonAgentConf(t *testing.T) {
 				Node: ignition_config_types_32.Node{Path: "/etc/ironic-python-agent.conf", Overwrite: &expectedOverwrite},
 				FileEmbedded1: ignition_config_types_32.FileEmbedded1{
 					Contents: ignition_config_types_32.Resource{
-						Source: pointer.String("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2Fexample.com%2Ffoo%3A6385%0Ainspection_callback_url%20%3D%20http%3A%2F%2Fexample.com%2Fbar%3A5050%2Fv1%2Fcontinue%0Ainsecure%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20%0A")},
+						Source: pointer.String("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2Fexample.com%3A6385%2Ffoo%0Ainspection_callback_url%20%3D%20http%3A%2F%2Fexample.com%3A5050%2Fbar%2Fv1%2Fcontinue%0Ainsecure%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20%0A")},
+					Mode: &expectedMode},
+			},
+		},
+		{
+			name:                          "new-style",
+			ironicBaseURL:                 "http://192.0.2.1,https://[2001:db8::1]",
+			ironicInspectorBaseURL:        "",
+			ironicInspectorVlanInterfaces: "all",
+			want: ignition_config_types_32.File{
+				Node: ignition_config_types_32.Node{Path: "/etc/ironic-python-agent.conf", Overwrite: &expectedOverwrite},
+				FileEmbedded1: ignition_config_types_32.FileEmbedded1{
+					Contents: ignition_config_types_32.Resource{
+						Source: pointer.String("data:text/plain,%0A%5BDEFAULT%5D%0Aapi_url%20%3D%20http%3A%2F%2F192.0.2.1%3A6385%2Chttps%3A%2F%2F%5B2001%3Adb8%3A%3A1%5D%3A6385%0Ainspection_callback_url%20%3D%20%0Ainsecure%20%3D%20True%0Aenable_vlan_interfaces%20%3D%20all%0A")},
 					Mode: &expectedMode},
 			},
 		},
@@ -109,6 +123,57 @@ func TestIronicAgentService(t *testing.T) {
 			if got := b.IronicAgentService(tt.copyNetwork); !reflect.DeepEqual(got, tt.want) {
 				t.Error(cmp.Diff(tt.want, got))
 			}
+		})
+	}
+}
+
+func TestProcessURLs(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		defaultPath string
+		want        string
+	}{
+		{
+			name:  "empty",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "single",
+			input: "http://192.0.2.1",
+			want:  "http://192.0.2.1:6385",
+		},
+		{
+			name:  "single-with-port",
+			input: "http://192.0.2.1:42",
+			want:  "http://192.0.2.1:42",
+		},
+		{
+			name:  "single-v6-tls",
+			input: "https://[2001:db8::1]",
+			want:  "https://[2001:db8::1]:6385",
+		},
+		{
+			name:  "single-with-port",
+			input: "https://[2001:db8::1]:42",
+			want:  "https://[2001:db8::1]:42",
+		},
+		{
+			name:  "dual",
+			input: "http://192.0.2.1,https://[2001:db8::1]",
+			want:  "http://192.0.2.1:6385,https://[2001:db8::1]:6385",
+		},
+		{
+			name:  "dual-with-port",
+			input: "http://192.0.2.1:42,https://[2001:db8::1]:43",
+			want:  "http://192.0.2.1:42,https://[2001:db8::1]:43",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := processURLs(tt.input, tt.defaultPath, "6385")
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
