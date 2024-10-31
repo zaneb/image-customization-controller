@@ -75,7 +75,10 @@ Restart=on-failure
 RestartSec=5
 StartLimitIntervalSec=0
 Type=notify
-ExecStart=/bin/podman run --detach --cgroups=no-conmon --sdnotify=conmon --rm --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --mount type=bind,src=/run/udev,dst=/run/udev --ipc=host --uts=host --env "IPA_COREOS_IP_OPTIONS=%s" --env IPA_COREOS_COPY_NETWORK=%v --env "IPA_DEFAULT_HOSTNAME=%s" %s --name ironic-agent %s
+ExecStartPre=/bin/rm -f %%t/%%n.ctr-id
+ExecStart=/bin/podman run --detach --cgroups=no-conmon --sdnotify=conmon --rm --cidfile=%%t/%%n.ctr-id --privileged --network host --mount type=bind,src=/etc/ironic-python-agent.conf,dst=/etc/ironic-python-agent/ignition.conf --mount type=bind,src=/dev,dst=/dev --mount type=bind,src=/sys,dst=/sys --mount type=bind,src=/run/dbus/system_bus_socket,dst=/run/dbus/system_bus_socket --mount type=bind,src=/,dst=/mnt/coreos --mount type=bind,src=/run/udev,dst=/run/udev --ipc=host --uts=host --env "IPA_COREOS_IP_OPTIONS=%s" --env IPA_COREOS_COPY_NETWORK=%v --env "IPA_DEFAULT_HOSTNAME=%s" %s --name ironic-agent %s
+ExecStop=/usr/bin/podman stop --ignore --cidfile=%%t/%%n.ctr-id
+ExecStopPost=/usr/bin/podman rm -f --ignore --cidfile=%%t/%%n.ctr-id
 [Install]
 WantedBy=multi-user.target
 `
